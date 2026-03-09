@@ -1253,24 +1253,29 @@ function renderResults() {
   const phrase = s.currentPhrase;
   const results = s.roundResults || [];
 
-  const markerHtml = results.map((r) => {
-    const cls = r.pts === 3 ? 'perfect' : r.pts === 2 ? 'good' : r.pts === 1 ? 'ok' : 'miss';
-    const pct = ((r.guess - 1) / 99) * 100;
-    return `
-      <div class="meter-marker ${cls}" style="left:${pct}%;" title="${esc(r.name)}: ${r.guess}">
-        <div class="meter-marker-label">${esc(r.name.split(' ')[0])}</div>
-        ${r.name.slice(0, 2).toUpperCase()}
-      </div>
-    `;
+  const ptColor = pts => pts === 3 ? '#10b981' : pts === 2 ? '#3b82f6' : pts === 1 ? '#f59e0b' : '#ef4444';
+  const DCXR = 130, DCX = 150, DCY = 150;
+  const TIP_R = DCXR - 16; // needle tips just inside the arc
+  const ANS_R = DCXR - 7;  // answer sits right on the arc
+  function dialAngle(val) { return Math.PI - ((val - 1) / 99) * Math.PI; }
+
+  const playerNeedles = results.map(r => {
+    const a  = dialAngle(r.guess);
+    const tx = (DCX + TIP_R * Math.cos(a)).toFixed(1);
+    const ty = (DCY - TIP_R * Math.sin(a)).toFixed(1);
+    const c  = ptColor(r.pts);
+    const init = esc(r.name.slice(0, 2).toUpperCase());
+    return `<line x1="${DCX}" y1="${DCY}" x2="${tx}" y2="${ty}" stroke="${c}" stroke-width="2.5" stroke-linecap="round" opacity="0.85"/>
+      <circle cx="${tx}" cy="${ty}" r="11" fill="${c}" stroke="rgba(0,0,0,0.35)" stroke-width="1.5"/>
+      <text x="${tx}" y="${(parseFloat(ty)+4).toFixed(1)}" text-anchor="middle" font-size="8.5" font-weight="800" fill="#fff">${init}</text>`;
   }).join('');
 
-  const actualPct = ((s.randomValue - 1) / 99) * 100;
-  const actualMarker = `
-    <div class="meter-marker actual" style="left:${actualPct}%;" title="Answer: ${s.randomValue}">
-      <div class="meter-marker-label">Answer</div>
-      ${s.randomValue}
-    </div>
-  `;
+  const aa = dialAngle(s.randomValue);
+  const ax = (DCX + ANS_R * Math.cos(aa)).toFixed(1);
+  const ay = (DCY - ANS_R * Math.sin(aa)).toFixed(1);
+  const ansNeedle = `<line x1="${DCX}" y1="${DCY}" x2="${ax}" y2="${ay}" stroke="#fbbf24" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="${ax}" cy="${ay}" r="13" fill="#fbbf24" stroke="rgba(0,0,0,0.45)" stroke-width="2"/>
+    <text x="${ax}" y="${(parseFloat(ay)+4.5).toFixed(1)}" text-anchor="middle" font-size="9" font-weight="900" fill="#000">${s.randomValue}</text>`;
 
   const anyPerfect = results.some(r => r.pts === 3);
 
@@ -1296,21 +1301,39 @@ function renderResults() {
 
       <div class="card" style="margin-bottom:1rem;">
         <div class="section-title">Where everyone landed</div>
-        <div class="meter-wrap" style="padding-bottom:1.5rem;">
-          <div class="meter-labels">
-            <div>
-              <div class="meter-label-num">1</div>
-              <div class="phrase-label-1">${esc(phrase?.label1 || '')}</div>
+        <div class="dial-wrap" style="margin:0.5rem 0 0;">
+          <svg class="dial-svg" viewBox="0 0 300 170" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="rdGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%"   stop-color="#10b981"/>
+                <stop offset="50%"  stop-color="#a855f7"/>
+                <stop offset="100%" stop-color="#ef4444"/>
+              </linearGradient>
+            </defs>
+            <path class="dial-track" d="M 20,150 A 130,130 0 0,1 280,150"/>
+            <path fill="none" stroke="url(#rdGrad)" stroke-width="14" stroke-linecap="round" opacity="0.25"
+                  d="M 20,150 A 130,130 0 0,1 280,150"/>
+            ${playerNeedles}
+            ${ansNeedle}
+            <circle class="dial-pivot" cx="150" cy="150" r="8"/>
+          </svg>
+          <div class="dial-labels">
+            <div class="dial-label-left">
+              <span class="dial-label-num">1</span>
+              <span class="phrase-label-1">${esc(phrase?.label1 || '')}</span>
             </div>
-            <div style="text-align:right;">
-              <div class="meter-label-num">100</div>
-              <div class="phrase-label-2">${esc(phrase?.label2 || '')}</div>
+            <div class="dial-label-right">
+              <span class="dial-label-num">100</span>
+              <span class="phrase-label-2">${esc(phrase?.label2 || '')}</span>
             </div>
           </div>
-          <div class="meter-bar" style="height:24px;overflow:visible;margin-top:2rem;">
-            ${markerHtml}
-            ${actualMarker}
-          </div>
+        </div>
+        <div style="display:flex;justify-content:center;gap:0.75rem;font-size:0.72rem;flex-wrap:wrap;color:var(--text-muted);margin-top:0.4rem;padding-bottom:0.25rem;">
+          <span style="color:#fbbf24;font-weight:700;">&#9679; Answer</span>
+          <span style="color:#10b981;">&#9679; Bullseye</span>
+          <span style="color:#3b82f6;">&#9679; Close</span>
+          <span style="color:#f59e0b;">&#9679; Nearly</span>
+          <span style="color:#ef4444;">&#9679; Miss</span>
         </div>
       </div>
 
