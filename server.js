@@ -16,7 +16,7 @@ let game = newGame();
 function newGame() {
   return {
     phase: 'lobby',          // 'lobby' | 'phrase-input' | 'playing' | 'game-over'
-    players: new Map(),       // socketId → { name, score, joinOrder, spectator }
+    players: new Map(),       // socketId → { name, score, bullseyes, joinOrder, spectator }
     host: null,
     phrases: [],              // { id, byId, byName, label1, label2 }
     phraseSubmissions: new Set(),
@@ -45,7 +45,7 @@ function newGame() {
 function sortedPlayers() {
   return [...game.players.entries()]
     .sort(([, a], [, b]) => a.joinOrder - b.joinOrder)
-    .map(([id, p]) => ({ id, name: p.name, score: p.score, spectator: !!p.spectator, joinOrder: p.joinOrder, disconnected: !!p.disconnected }));
+    .map(([id, p]) => ({ id, name: p.name, score: p.score, bullseyes: p.bullseyes ?? 0, spectator: !!p.spectator, joinOrder: p.joinOrder, disconnected: !!p.disconnected }));
 }
 
 // Active (non-spectator, non-disconnected) players only
@@ -193,18 +193,20 @@ function resolveRound() {
     const diff = Math.abs(guess - game.randomValue);
     const pts = diff <= 3 ? 3 : diff <= 4 ? 2 : diff <= 5 ? 1 : 0;
     const p = game.players.get(id);
-    if (p) p.score += pts;
+    if (p) {
+      p.score += pts;
+      if (pts === 3) p.bullseyes = (p.bullseyes ?? 0) + 1;
+    }
     results.push({ id, name: p?.name ?? '?', guess, diff, pts });
   });
 
   results.sort((a, b) => b.pts - a.pts || a.diff - b.diff);
   game.roundResults = results;
 
-  // Award the Vibe Man based on average diff of everyone's guesses
+  // Vibe Man earns the sum of all guessers' points
   const vibeManId = game.vibeManRotation[game.vibeManRotationIdx];
   if (results.length > 0) {
-    const avgDiff = results.reduce((sum, r) => sum + r.diff, 0) / results.length;
-    const vmPts = avgDiff <= 3 ? 3 : avgDiff <= 4 ? 2 : avgDiff <= 5 ? 1 : 0;
+    const vmPts = results.reduce((sum, r) => sum + r.pts, 0);
     const vm = game.players.get(vibeManId);
     if (vm) vm.score += vmPts;
     game.vibeManPts = vmPts;
@@ -295,13 +297,13 @@ io.on('connection', (socket) => {
 
     if (game.phase === 'lobby') {
       // Normal lobby join
-      game.players.set(socket.id, { name: clean, score: 0, joinOrder: game.players.size, spectator: false });
+      game.players.set(socket.id, { name: clean, score: 0, bullseyes: 0, joinOrder: game.players.size, spectator: false });
       if (!game.host) game.host = socket.id;
       broadcast();
     } else {
       // Game already in progress — join as spectator
       const joinOrder = game.players.size;
-      game.players.set(socket.id, { name: clean, score: 0, joinOrder, spectator: true });
+      game.players.set(socket.id, { name: clean, score: 0, bullseyes: 0, joinOrder, spectator: true });
       broadcast();
     }
   });

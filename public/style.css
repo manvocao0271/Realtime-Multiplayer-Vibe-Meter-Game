@@ -193,6 +193,16 @@ p  { color: var(--text-muted); }
   filter: grayscale(0.7);
 }
 
+.lb-bullseye {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #fbbf24;
+  min-width: 2.2rem;
+  text-align: right;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .lb-medal {
   font-size: 1rem;
   min-width: 1.4rem;

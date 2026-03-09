@@ -165,8 +165,10 @@ function renderLeaderboard() {
     <div class="lb-list">
       ${ranked.map((p, i) => {
         const isYou = p.id === s.myId;
+        const bulls = p.bullseyes || 0;
         return `
           <div class="lb-row ${isYou ? 'lb-you' : ''} ${p.disconnected ? 'lb-disconnected' : ''}">
+            ${bulls > 0 ? `<span class="lb-bullseye" title="${bulls} bullseye${bulls !== 1 ? 's' : ''}">${bulls}x&#127919;</span>` : '<span class="lb-bullseye"></span>'}
             <span class="lb-medal">${medalEmoji[i] !== undefined ? medalEmoji[i] : ''}</span>
             <span class="lb-pname">${esc(p.name)}${p.disconnected ? ' <span style="font-size:0.65rem;opacity:0.5;">(away)</span>' : ''}</span>
             <span class="lb-pts">${p.score}</span>
@@ -1272,6 +1274,12 @@ function renderResults() {
 
   const anyPerfect = results.some(r => r.pts === 3);
 
+  // Trigger confetti if the local player hit a bullseye this round
+  const myResult = results.find(r => r.id === currentState.myId);
+  if (myResult && myResult.pts === 3) {
+    setTimeout(launchConfetti, 100);
+  }
+
   return `
     <div class="fade-in">
       ${renderVibeManBanner(s)}
@@ -1334,13 +1342,11 @@ function renderResults() {
           ${s.vibeManPts != null ? (() => {
             const vmPts = s.vibeManPts;
             const vmIdx = s.players.findIndex(p => p.id === s.vibeManId);
-            const avgDiff = results.length > 0
-              ? (results.reduce((sum, r) => sum + r.diff, 0) / results.length).toFixed(1)
-              : '–';
-            const label = vmPts === 3 ? 'Story on point!' : vmPts === 2 ? 'Great story!' : vmPts === 1 ? 'Decent hint!' : 'Misleading...';
+            const totalGuesserPts = results.reduce((sum, r) => sum + r.pts, 0);
+            const label = totalGuesserPts === 0 ? 'Misleading...' : totalGuesserPts <= 2 ? 'Decent hint!' : totalGuesserPts <= 5 ? 'Great story!' : 'Story on point!';
             return `
-            <div class="result-row pts-${vmPts}" style="border-top:1px solid rgba(255,255,255,0.07);margin-top:0.25rem;padding-top:0.5rem;">
-              <div class="result-pts pts-${vmPts}">
+            <div class="result-row pts-${vmPts > 0 ? 'vm' : '0'}" style="border-top:1px solid rgba(255,255,255,0.07);margin-top:0.25rem;padding-top:0.5rem;">
+              <div class="result-pts" style="background:rgba(168,85,247,0.15);color:#c084fc;border-color:rgba(168,85,247,0.3);min-width:2.5rem;">
                 ${vmPts > 0 ? '+' + vmPts : '--'}
               </div>
               <div class="player-avatar avatar-${vmIdx % 8}">
@@ -1348,7 +1354,7 @@ function renderResults() {
               </div>
               <div style="flex:1;">
                 <div class="result-name">${esc(s.vibeManName)} <span style="font-size:0.75rem;opacity:0.6;">(Vibe Man)</span></div>
-                <div class="result-diff">Avg guess off by ${avgDiff}</div>
+                <div class="result-diff">Sum of guessers' points: ${totalGuesserPts}</div>
               </div>
               <div style="font-size:0.8rem;color:var(--text-dim);">${label}</div>
             </div>`;
@@ -1479,6 +1485,51 @@ function showToast(msg, type = 'info') {
     el.classList.add('removing');
     setTimeout(() => el.remove(), 280);
   }, 3500);
+}
+
+// -- Confetti (bullseye celebration) -------------------------
+function launchConfetti() {
+  const canvas = document.createElement('canvas');
+  canvas.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:9999;';
+  document.body.appendChild(canvas);
+  const ctx = canvas.getContext('2d');
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+
+  const COLORS = ['#a855f7','#10b981','#f59e0b','#ef4444','#3b82f6','#ec4899','#fbbf24'];
+  const pieces = Array.from({ length: 120 }, () => ({
+    x: Math.random() * canvas.width,
+    y: Math.random() * -canvas.height * 0.5,
+    w: 8 + Math.random() * 8,
+    h: 4 + Math.random() * 4,
+    color: COLORS[Math.floor(Math.random() * COLORS.length)],
+    rot: Math.random() * Math.PI * 2,
+    rotSpeed: (Math.random() - 0.5) * 0.2,
+    vx: (Math.random() - 0.5) * 3,
+    vy: 2 + Math.random() * 4,
+  }));
+
+  let alive = true;
+  const killTimer = setTimeout(() => { alive = false; }, 3000);
+
+  function frame() {
+    if (!alive) { canvas.remove(); return; }
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    let allGone = true;
+    pieces.forEach(p => {
+      p.x += p.vx; p.y += p.vy; p.rot += p.rotSpeed; p.vy += 0.08;
+      if (p.y < canvas.height + 20) allGone = false;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      ctx.restore();
+    });
+    if (allGone) { clearTimeout(killTimer); canvas.remove(); return; }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
 }
 
 // -- HTML escaping (XSS prevention) --------------------------
