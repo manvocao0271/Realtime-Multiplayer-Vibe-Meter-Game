@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vibe Meter 🎯</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="logo">🎯 <span>Vibe Meter</span></div>
+      <div id="header-meta" class="header-meta"></div>
+    </div>
+  </header>
+
+  <div id="app-wrapper">
+    <main id="app">
+      <div class="connecting-screen">
+        <div class="spinner"></div>
+        <p>Connecting…</p>
+      </div>
+    </main>
+    <aside id="leaderboard-sidebar"></aside>
+  </div>
+
+  <div id="toast-container"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
