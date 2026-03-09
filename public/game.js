@@ -122,7 +122,7 @@ function render() {
       let playKey = null;
       if (!s.isSpectator && s.roundPhase === 'guessing') {
         playKey = s.isVibeman
-          ? 'playing:guessing:vibe-man'
+          ? `playing:guessing:vibe-man:${s.totalGuessers}`
           : `playing:guessing:${s.hasSubmittedGuess ? 'post' : 'pre'}`;
       }
       if (playKey && lastRenderKey === playKey) {
@@ -158,14 +158,17 @@ function renderLeaderboard() {
   const medalEmoji = ['&#x1F947;', '&#x1F948;', '&#x1F949;'];
 
   return `
-    <div class="lb-header">Leaderboard</div>
+    <div class="lb-header">
+      Leaderboard
+      ${s.pointsGoal ? `<span style="font-size:0.7rem;color:var(--text-dim);font-weight:400;display:block;margin-top:0.1rem;">First to ${s.pointsGoal} pts wins</span>` : ''}
+    </div>
     <div class="lb-list">
       ${ranked.map((p, i) => {
         const isYou = p.id === s.myId;
         return `
-          <div class="lb-row ${isYou ? 'lb-you' : ''}">
+          <div class="lb-row ${isYou ? 'lb-you' : ''} ${p.disconnected ? 'lb-disconnected' : ''}">
             <span class="lb-medal">${medalEmoji[i] !== undefined ? medalEmoji[i] : ''}</span>
-            <span class="lb-pname">${esc(p.name)}</span>
+            <span class="lb-pname">${esc(p.name)}${p.disconnected ? ' <span style="font-size:0.65rem;opacity:0.5;">(away)</span>' : ''}</span>
             <span class="lb-pts">${p.score}</span>
           </div>
         `;
@@ -194,6 +197,13 @@ function renderLeaderboard() {
 // -- Join Screen ---------------------------------------------
 function renderJoin() {
   const gameInProgress = currentState && currentState.phase !== 'lobby' && !currentState.myName;
+  const hasDisconnected = currentState?.players?.some(p => p.disconnected);
+  // Determine initial button label based on pre-filled name
+  const prefilledName = myName.trim().toLowerCase();
+  const isRejoin = hasDisconnected && prefilledName &&
+    currentState.players.some(p => p.disconnected && p.name.toLowerCase() === prefilledName);
+  const btnLabel = isRejoin ? 'Rejoin Session' : gameInProgress ? 'Join as Spectator' : 'Join Game';
+
   return `
     <div class="phase-hero fade-in" style="padding-top:3rem;">
       <span class="emoji-big">&#127919;</span>
@@ -203,9 +213,11 @@ function renderJoin() {
 
     <div class="card" style="max-width:420px;margin:1.5rem auto;" id="join-card">
       ${gameInProgress ? `
-        <div class="callout callout-warning" style="margin-bottom:1rem;">
-          <div class="callout-title">Game in progress</div>
-          <p>You will spectate and submit a phrase to join on the next phrase cycle.</p>
+        <div class="callout ${isRejoin ? 'callout-success' : 'callout-warning'}" style="margin-bottom:1rem;" id="join-callout">
+          ${ isRejoin
+            ? '<div class="callout-title">Welcome back!</div><p>Rejoin with your saved score.</p>'
+            : '<div class="callout-title">Game in progress</div><p>You will spectate and submit a phrase to join on the next round.</p>'
+          }
         </div>
       ` : ''}
       <div class="form-group">
@@ -214,7 +226,7 @@ function renderJoin() {
                value="${esc(myName)}" autocomplete="off" autocorrect="off" spellcheck="false" />
       </div>
       <button class="btn btn-primary btn-full btn-lg" id="join-btn" style="margin-top:1rem;">
-        ${gameInProgress ? 'Join as Spectator' : 'Join Game'}
+        ${btnLabel}
       </button>
       <p style="font-size:0.8rem;margin-top:0.75rem;text-align:center;">
         The <strong>first person</strong> to join becomes the host.
@@ -229,6 +241,27 @@ function attachJoinListeners() {
   if (!input || !btn) return;
 
   input.focus();
+
+  const gameInProgress = currentState && currentState.phase !== 'lobby';
+
+  function updateJoinUI() {
+    const name = input.value.trim().toLowerCase();
+    const rejoining = !!(gameInProgress &&
+      currentState?.players?.some(p => p.disconnected && p.name.toLowerCase() === name));
+    btn.textContent = rejoining ? 'Rejoin Session' : gameInProgress ? 'Join as Spectator' : 'Join Game';
+    const callout = document.getElementById('join-callout');
+    if (callout) {
+      if (rejoining) {
+        callout.className = 'callout callout-success';
+        callout.innerHTML = '<div class="callout-title">Welcome back!</div><p>Rejoin with your saved score.</p>';
+      } else {
+        callout.className = 'callout callout-warning';
+        callout.innerHTML = '<div class="callout-title">Game in progress</div><p>You will spectate and submit a phrase to join on the next round.</p>';
+      }
+    }
+  }
+
+  input.addEventListener('input', updateJoinUI);
 
   const submit = () => {
     const name = input.value.trim();
@@ -266,6 +299,13 @@ function renderLobby() {
       <hr class="divider" />
 
       ${s.isHost ? `
+        <div class="section-title" style="margin-bottom:0.5rem;">Points Goal</div>
+        <div class="row" style="gap:0.5rem;margin-bottom:1rem;" id="goal-picker">
+          ${[25, 50, 75].map(g => `
+            <button class="btn goal-btn ${g === 25 ? 'btn-primary' : 'btn-secondary'}"
+                    data-goal="${g}" style="flex:1;">${g} pts</button>
+          `).join('')}
+        </div>
         <button class="btn btn-primary btn-full btn-lg" id="start-btn"
           ${activeCt < 2 ? 'disabled' : ''}>
           ${activeCt < 2 ? 'Waiting for more players...' : 'Start Game'}
@@ -282,8 +322,18 @@ function renderLobby() {
 }
 
 function attachLobbyListeners() {
+  let selectedGoal = 25;
+  document.querySelectorAll('.goal-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      selectedGoal = Number(btn.dataset.goal);
+      document.querySelectorAll('.goal-btn').forEach(b => {
+        b.classList.toggle('btn-primary', b === btn);
+        b.classList.toggle('btn-secondary', b !== btn);
+      });
+    });
+  });
   document.getElementById('start-btn')?.addEventListener('click', () => {
-    socket.emit('start');
+    socket.emit('start', { pointsGoal: selectedGoal });
   });
 }
 
@@ -445,6 +495,10 @@ function renderPlaying(app) {
   }
 
   switch (s.roundPhase) {
+    case 'phrase-select':
+      app.innerHTML = s.isVibeman ? renderPhraseSelect() : renderWaitForPhraseSelect();
+      if (s.isVibeman) attachPhraseSelectListeners();
+      break;
     case 'vibe-writing':
       app.innerHTML = s.isVibeman ? renderVibeManWrite() : renderWaitForVibeman();
       if (s.isVibeman) attachStoryListeners();
@@ -456,7 +510,6 @@ function renderPlaying(app) {
       else startGuessCountdown();
       break;
     case 'round-results':
-    case 'phrase-results':
       app.innerHTML = renderResults();
       attachResultsListeners();
       break;
@@ -476,7 +529,7 @@ function renderSpectator() {
         <div class="card" style="text-align:center;padding:2rem;margin-bottom:1rem;">
           <div style="font-size:2.5rem;margin-bottom:0.5rem;">&#128065;</div>
           <h3>Spectating</h3>
-          <p style="margin-top:0.4rem;">Your phrase is queued. You'll join as a full player at the start of the next phrase!</p>
+          <p style="margin-top:0.4rem;">Your phrase is queued. You'll join as a full player at the start of the next round!</p>
           <div class="callout callout-success" style="margin-top:1rem;text-align:left;">
             <div class="callout-title">Phrase submitted &mdash; you're in the queue</div>
             <p>Sit back and watch. Points start at <strong>0</strong> when you join.</p>
@@ -505,7 +558,7 @@ function renderSpectator() {
       <div class="phase-hero" style="padding-top:1rem;">
         <span class="emoji-big">&#128065;</span>
         <h2>Spectating Game</h2>
-        <p>Submit a phrase pair to join the action on the next phrase cycle!</p>
+        <p>Submit a phrase pair to join the action on the next round!</p>
       </div>
 
       <div class="card fade-in">
@@ -565,16 +618,14 @@ function attachSpectatorPhraseListeners() {
 
 // Vibe Man banner
 function renderVibeManBanner(s) {
-  const total = s.totalVibeManSlots;
-  const idx   = s.currentVibeManIdx + 1;
   return `
     <div class="row" style="gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap;">
       ${s.isVibeman
         ? '' /* TASK badge moved into the story card */
         : `<span class="badge badge-purple">Vibe Man: ${esc(s.vibeManName)}</span>`
       }
-      <span class="badge badge-purple">Round ${idx} / ${total}</span>
-      <span class="badge badge-purple">Phrase ${s.currentPhraseIdx + 1} / ${s.phrases.length}</span>
+      <span class="badge badge-purple">Round ${s.roundNumber}</span>
+      <span class="badge badge-yellow">Goal: ${s.pointsGoal} pts</span>
     </div>
   `;
 }
@@ -756,6 +807,59 @@ function renderWaitForVibeman() {
   `;
 }
 
+// -- Phrase Select Screen ------------------------------------
+function renderPhraseSelect() {
+  const s = currentState;
+  return `
+    <div class="fade-in">
+      ${renderVibeManBanner(s)}
+
+      <div class="card highlight">
+        <div style="text-align:center;margin-bottom:1rem;">
+          <span class="badge badge-yellow" style="font-size:0.95rem;padding:0.35rem 0.75rem;">TASK: Vibe Man &mdash; Choose a Phrase</span>
+        </div>
+        <div style="text-align:center;margin-bottom:1.25rem;color:var(--text-muted);font-size:0.9rem;">
+          Pick the phrase you'll use to describe your secret vibe.
+        </div>
+        <div class="stack-sm">
+          ${(s.availablePhrases || []).map(ph => `
+            <button class="btn btn-secondary phrase-pick-btn" data-phrase-id="${ph.id}"
+                    style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem;padding:0.75rem 1rem;text-align:left;">
+              <span class="phrase-label-1" style="font-size:1rem;">${esc(ph.label1)}</span>
+              <span class="phrase-vs">vs</span>
+              <span class="phrase-label-2" style="font-size:1rem;">${esc(ph.label2)}</span>
+              <span style="font-size:0.7rem;color:var(--text-dim);white-space:nowrap;margin-left:auto;">by ${esc(ph.byName)}</span>
+            </button>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderWaitForPhraseSelect() {
+  const s = currentState;
+  return `
+    <div class="fade-in">
+      ${renderVibeManBanner(s)}
+
+      <div class="card" style="text-align:center;padding:2rem;">
+        <div style="font-size:3rem;margin-bottom:0.75rem;">&#128196;</div>
+        <h3><span class="waiting-pulse"></span> ${esc(s.vibeManName)} is choosing a phrase...</h3>
+        <p style="margin-top:0.5rem;">They have a secret number and are picking the best phrase to describe it.</p>
+      </div>
+    </div>
+  `;
+}
+
+function attachPhraseSelectListeners() {
+  document.querySelectorAll('.phrase-pick-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      socket.emit('select-phrase', { phraseId: Number(btn.dataset.phraseId) });
+    });
+  });
+}
+
 // -- Vibe Man: Waiting for Guesses ---------------------------
 
 // Update a single mini-dial in the grid without re-rendering the whole page
@@ -802,7 +906,7 @@ function renderMiniDialCard(p, knownMap) {
 }
 
 function updateMiniDial(playerId, value, submitted) {
-  const card = document.getElementById(`mini-dial-${CSS.escape(playerId)}`);
+  const card = document.getElementById('mini-dial-' + playerId);
   if (!card || value == null) return;
 
   const CX = 100, CY = 100, R = 82;
@@ -828,7 +932,7 @@ function renderVibeManWaiting() {
   const s = currentState;
   const pct = s.totalGuessers > 0 ? Math.round((s.guessCount / s.totalGuessers) * 100) : 0;
   const vibeManId = s.vibeManId;
-  const guessers = (s.players || []).filter(p => !p.spectator && p.id !== vibeManId);
+  const guessers = (s.players || []).filter(p => !p.spectator && !p.disconnected && p.id !== vibeManId);
   const knownMap = {};
   (s.liveGuesses || []).forEach(g => { knownMap[g.id] = g; });
 
@@ -1144,7 +1248,6 @@ function attachGuessListeners() {
 // -- Round / Phrase Results ----------------------------------
 function renderResults() {
   const s = currentState;
-  const isPhraseEnd = s.roundPhase === 'phrase-results';
   const phrase = s.currentPhrase;
   const results = s.roundResults || [];
 
@@ -1176,9 +1279,7 @@ function renderResults() {
       <div class="card ${anyPerfect ? 'success' : ''}" style="text-align:center;padding:1.5rem;margin-bottom:1rem;">
         ${anyPerfect
           ? `<div style="font-size:2.5rem;margin-bottom:0.25rem;">&#127881;</div><h3>Someone nailed it!</h3>`
-          : isPhraseEnd
-            ? `<div style="font-size:2.5rem;margin-bottom:0.25rem;">&#128202;</div><h3>Phrase Complete</h3>`
-            : `<div style="font-size:2.5rem;margin-bottom:0.25rem;">&#128517;</div><h3>Nobody hit the bullseye this round!</h3>`
+          : `<div style="font-size:2.5rem;margin-bottom:0.25rem;">&#128517;</div><h3>Close, but no bullseye!</h3>`
         }
         <p style="margin-top:0.3rem;">
           The secret number was <strong style="color:var(--text);font-size:1.1em;">${s.randomValue}</strong>
@@ -1256,12 +1357,7 @@ function renderResults() {
       </div>
 
       <div class="callout callout-info" style="text-align:center;padding:0.85rem 1rem;">
-        <p style="font-size:0.9rem;margin-bottom:0.6rem;">
-          ${isPhraseEnd
-            ? (s.currentPhraseIdx + 1 >= s.phrases.length ? 'Showing final results&hellip;' : 'Next phrase starting&hellip;')
-            : 'Next round starting&hellip;'
-          }
-        </p>
+        <p style="font-size:0.9rem;margin-bottom:0.6rem;">Next round starting&hellip;</p>
         <div class="countdown-bar-wrap">
           <div class="countdown-bar"></div>
         </div>
@@ -1279,13 +1375,14 @@ function renderGameOver() {
   const s = currentState;
   const ranked = [...s.players].filter(p => !p.spectator).sort((a, b) => b.score - a.score);
   const medalEmoji = ['&#x1F947;', '&#x1F948;', '&#x1F949;'];
+  const winner = ranked[0];
 
   return `
     <div class="fade-in">
       <div class="phase-hero">
         <span class="emoji-big">&#x1F3C6;</span>
-        <h2 class="gradient-text">Game Over!</h2>
-        <p>Here are the final standings.</p>
+        <h2 class="gradient-text">${winner ? esc(winner.name) + ' wins!' : 'Game Over!'}</h2>
+        <p>First to <strong>${s.pointsGoal}</strong> points &mdash; here are the final standings.</p>
       </div>
 
       <div class="card" style="margin-bottom:1.5rem;">
@@ -1352,7 +1449,7 @@ function renderPlayerItem(p, s) {
   const idx    = (s.players || []).findIndex(pl => pl.id === p.id);
 
   return `
-    <div class="player-item ${isYou ? 'you' : ''} ${isVibe ? 'vibeman' : ''}">
+    <div class="player-item ${isYou ? 'you' : ''} ${isVibe ? 'vibeman' : ''} ${p.disconnected ? 'player-disconnected' : ''}">
       <div class="player-avatar avatar-${idx % 8}">
         ${esc(p.name[0].toUpperCase())}
       </div>
@@ -1361,6 +1458,7 @@ function renderPlayerItem(p, s) {
         ${isHost ? '<span class="player-tag tag-host">host</span>' : ''}
         ${isVibe ? '<span class="player-tag tag-vibeman">Vibe Man</span>' : ''}
         ${p.spectator ? '<span class="player-tag" style="background:rgba(245,158,11,0.15);color:#fcd34d;border:1px solid var(--warning);">spectating</span>' : ''}
+        ${p.disconnected ? '<span class="player-tag" style="background:rgba(107,114,128,0.15);color:#9ca3af;border:1px solid rgba(107,114,128,0.3);">away</span>' : ''}
         ${s.phase !== 'lobby'
           ? `<span class="player-score">${p.score} pts</span>`
           : ''}

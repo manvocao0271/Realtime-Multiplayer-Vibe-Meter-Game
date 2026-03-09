@@ -188,6 +188,11 @@ p  { color: var(--text-muted); }
   box-shadow: 0 0 0 1px var(--primary) inset, 0 2px 12px rgba(124,58,237,0.25);
 }
 
+.lb-row.lb-disconnected {
+  opacity: 0.4;
+  filter: grayscale(0.7);
+}
+
 .lb-medal {
   font-size: 1rem;
   min-width: 1.4rem;
@@ -397,6 +402,7 @@ textarea {
 .player-item.you { border-color: var(--primary); background: rgba(124,58,237,0.1); }
 .player-item.host .player-name::after { content: ' 👑'; font-size: 0.85em; }
 .player-item.vibeman { border-color: var(--warning); background: rgba(245,158,11,0.1); }
+.player-item.player-disconnected { opacity: 0.45; filter: grayscale(0.6); }
 
 .player-avatar {
   width: 32px;
