@@ -9,23 +9,26 @@ A real-time multiplayer party game where players write "vibe stories" and everyo
 ### Setup
 1. One player hosts the server and shares the URL with friends on the same network.
 2. The **first player to join** becomes the host.
-3. Every player enters a pair of **polar-opposite phrases** (e.g. *"green flag"* vs *"red flag"*, *"totally sober"* vs *"blackout drunk"*). These become the scoring scales for the game.
+3. The host selects a **points goal** (25, 50, or 75) and clicks *Start Game*.
+4. Every player enters a pair of **polar-opposite phrases** (e.g. *"green flag"* vs *"red flag"*, *"totally sober"* vs *"blackout drunk"*). These become the scoring scales for the game.
 
 ### Gameplay Loop
-Each phrase goes through one or more rounds until it's resolved:
+Rounds continue until a player reaches the points goal:
 
-1. **The Vibe Man is assigned** — one player per round is secretly given a random integer from 1–100, where 1 anchors the left phrase and 100 anchors the right.
-2. **Vibe Man writes a story** — a short description that captures the feeling of that number on the scale, without mentioning the number directly.
-3. **Everyone else guesses** — all other players submit a number (1–100) based purely on the vibe of the story.
-4. **Scoring:**
-   | Distance from true value | Points |
-   |--------------------------|--------|
-   | ≤ 3                      | 3 pts  |
-   | ≤ 4                      | 2 pts  |
-   | ≤ 5                      | 1 pt   |
-   | > 5                      | 0 pts  |
-5. **Phrase advances** if at least one player scores a perfect 3 pts, or all players have taken a turn as Vibe Man for that phrase. Otherwise the next player becomes Vibe Man and a new random value is drawn.
-6. Once all phrases are resolved, the game ends and a final leaderboard is shown.
+1. **The Vibe Man is assigned** — players rotate through the role in order. The Vibe Man is secretly given a random integer from 1–100, where 1 anchors the left phrase and 100 anchors the right.
+2. **Vibe Man selects a phrase** — from the pool of submitted phrases, picking one they haven't used recently. The chosen phrase defines the spectrum for this round.
+3. **Vibe Man writes a story** — a short description that captures the feeling of their secret number on that scale, without mentioning the number directly.
+4. **Everyone else guesses** — all other players submit a number (1–100) based purely on the vibe of the story. Guesses must be locked in within **15 seconds** or the round resolves automatically.
+5. **Scoring:**
+   | Distance from true value | Guesser points | Vibe Man points |
+   |--------------------------|----------------|-----------------|
+   | ≤ 3                      | 3 pts          | +(sum of all guesser pts) |
+   | ≤ 4                      | 2 pts          | same |
+   | ≤ 5                      | 1 pt           | same |
+   | > 5                      | 0 pts          | same |
+
+   The Vibe Man earns the **sum of all guessers' points** that round — good writing is rewarded.
+6. Play continues, rotating the Vibe Man role, until any player reaches the points goal. A final leaderboard is then shown.
 
 ---
 
@@ -38,6 +41,21 @@ npm run dev      # nodemon (auto-restart on changes)
 ```
 
 Share `http://<your-local-ip>:3000` with anyone on the same Wi-Fi.
+
+### Exposing via Cloudflare Tunnel (for remote players)
+
+Open a **second terminal** and run:
+
+```bash
+cloudflared tunnel --url localhost:3000
+```
+
+Cloudflare will print a public `https://` URL — share that with anyone, anywhere.
+
+| Terminal | Command | Purpose |
+|----------|---------|---------|
+| 1 | `npm start` | Start the Node.js game server on `localhost:3000` |
+| 2 | `cloudflared tunnel --url localhost:3000` | Expose the server publicly via Cloudflare Tunnel |
 
 **Stack:** Node.js · Express · Socket.IO (WebSockets)
 
@@ -68,10 +86,17 @@ This is intentionally minimal — no database, no authentication, no persistence
 | Feature | Detail |
 |---------|--------|
 | **Interactive SVG dial** | Semicircular gauge for submitting guesses; drag or click, full mouse + touch support |
-| **Live drag positions** | While guessing, each player's dial position is streamed to the server (throttled ~25 fps) and forwarded exclusively to the current Vibe Man as a mini-dial dashboard |
-| **Spectator / late-join flow** | Players who join mid-game spectate, submit a phrase, and are promoted to full players at the start of the next phrase cycle |
-| **In-place DOM patching** | The phrase-input screen patches counters and the player list without replacing the input fields, preventing flicker while typing |
-| **Name persistence** | Player name is saved to `localStorage` and pre-filled on reconnect |
+| **Phrase-select screen** | Vibe Man picks which submitted phrase to use each round; the server tracks which phrases they've used recently and auto-resets when all are exhausted |
+| **15-second guess timer** | Countdown bar and live second-ticker for guessers; round auto-resolves on expiry |
+| **Live drag positions** | While guessing, each player's dial position is streamed to the server (throttled ~25 fps) and forwarded to the current Vibe Man **and any guesser who has already submitted** as a mini-dial dashboard |
+| **Vibe Man scoring** | After each round the Vibe Man earns the sum of all guessers' points, incentivising clear writing |
+| **Bullseye tracker** | 3-point scores (exact-ish guesses) are counted separately per player and displayed with 🎯 in the leaderboard sidebar |
+| **Points goal selector** | Host picks 25, 50, or 75 as the winning threshold in the lobby before starting |
+| **Spectator / late-join flow** | Players who join mid-game spectate, submit a phrase, and are promoted to full players at the start of the next round |
+| **Player reconnection** | If a player disconnects and rejoins with the same name, their score, rotation slot, and phrase history are fully restored |
+| **In-place DOM patching** | The phrase-input and guessing screens patch counters and mini-dials without replacing interactive elements, preventing flicker |
+| **Animated waiting dial** | A smoothly oscillating dial is shown to players waiting for the Vibe Man to finish writing |
+| **Name persistence** | Player name is saved to `localStorage` and pre-filled on re-open |
 | **Results visualisation** | After each round, a visual meter bar overlays every player's guess and the actual answer |
 | **Restart flow** | Host can restart from the game-over screen; all clients reset via a `reset` Socket.IO event |
 | **XSS prevention** | All user-supplied strings are HTML-escaped via a dedicated `esc()` helper before injection into the DOM |
@@ -125,7 +150,7 @@ Break the single `server.js` into independently deployable services:
 
 ### 6. Resilience Patterns
 - **Circuit breakers** between the game service and Redis/Kafka to avoid cascading failures.
-- **Graceful disconnect handling** — already partially implemented (host migration, ghost guesser cleanup); to be hardened with a session-recovery handshake so players can reconnect mid-game.
+- **Graceful disconnect handling** — basic reconnect is fully implemented (host migration, guesser drop, same-name session restore with score intact); to be hardened with a Redis-backed session-recovery handshake so reconnects survive server restarts or cross-instance hops.
 - **Leader election** for the host role using a distributed lock (Redis `SET NX`) so host state survives the original socket disconnecting.
 
 ---
@@ -133,14 +158,21 @@ Break the single `server.js` into independently deployable services:
 ## Roadmap
 
 ### Completed
-- [x] Core game loop (lobby → phrase input → vibe writing → guessing → scoring)
+- [x] Core game loop (lobby → phrase input → phrase select → vibe writing → guessing → scoring)
+- [x] Points goal selector in lobby (25, 50, or 75 pts)
+- [x] Vibe Man phrase-select screen with per-player phrase-usage tracking and auto-reset
+- [x] 15-second guess countdown with auto-resolve on expiry
+- [x] Vibe Man scoring (earns sum of all guessers' points each round)
+- [x] Bullseye tracking (3-pt scores counted and shown per player in leaderboard)
 - [x] Host management and host-migration on disconnect
 - [x] Disconnect edge-case handling (vibe-man skip, guesser drop, lobby cleanup)
+- [x] Player reconnection — same-name rejoin restores score, rotation slot, and phrase history
 - [x] Spectator / late-joiner system with pending-player queue
-- [x] Real-time live drag-position streaming to Vibe Man
+- [x] Real-time live drag-position streaming to Vibe Man and submitted guessers
 - [x] Interactive SVG dial with mouse and touch support
-- [x] Mini-dial dashboard for Vibe Man during the guessing phase
-- [x] In-place DOM patching on phrase-input screen (no flicker while typing)
+- [x] Mini-dial dashboard during the guessing phase
+- [x] Animated oscillating dial shown while waiting for Vibe Man
+- [x] In-place DOM patching (no flicker while typing or during live guessing)
 - [x] Visual results meter — player guesses overlaid on the spectrum
 - [x] Restart / Play Again flow from game-over screen
 - [x] Name persistence via `localStorage`
