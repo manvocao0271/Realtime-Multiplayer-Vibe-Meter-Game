@@ -2,7 +2,9 @@
 //  VIBE METER -- Client
 // ============================================================
 
-const socket = io();
+// Read the room code from the URL path, e.g. /ABCDEF → 'ABCDEF'
+const roomCode = window.location.pathname.replace(/^\//, '').toUpperCase() || '';
+const socket = io({ query: { room: roomCode } });
 
 // -- Persistent local state ----------------------------------
 let myName = localStorage.getItem('vibeMeterName') || '';
@@ -291,6 +293,12 @@ function renderLobby() {
     </div>
 
     <div class="card">
+      <div style="background:rgba(124,58,237,0.15);border:1px solid var(--primary);border-radius:var(--radius-sm);padding:0.75rem 1rem;margin-bottom:1rem;display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+        <span style="font-size:0.8rem;font-weight:600;color:#c4b5fd;white-space:nowrap;">&#128279; Invite link</span>
+        <input readonly id="share-url-input" value="${esc(window.location.href)}"
+               style="flex:1;min-width:0;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.1);border-radius:var(--radius-sm);color:var(--text);font-size:0.8rem;padding:0.35rem 0.6rem;font-family:monospace;cursor:default;outline:none;" />
+        <button class="btn btn-secondary" id="copy-link-btn" style="padding:0.35rem 0.75rem;font-size:0.8rem;flex-shrink:0;">Copy</button>
+      </div>
       <div class="section">
         <div class="section-title">Players (${activeCt})</div>
         <div class="player-list stack-sm">
@@ -336,6 +344,12 @@ function attachLobbyListeners() {
   });
   document.getElementById('start-btn')?.addEventListener('click', () => {
     socket.emit('start', { pointsGoal: selectedGoal });
+  });
+  document.getElementById('copy-link-btn')?.addEventListener('click', () => {
+    const btn = document.getElementById('copy-link-btn');
+    navigator.clipboard.writeText(window.location.href).then(() => {
+      if (btn) { btn.textContent = 'Copied!'; setTimeout(() => { if (btn) btn.textContent = 'Copy'; }, 2000); }
+    });
   });
 }
 
@@ -513,7 +527,6 @@ function renderPlaying(app) {
       break;
     case 'round-results':
       app.innerHTML = renderResults();
-      attachResultsListeners();
       break;
     default:
       app.innerHTML = '<div class="connecting-screen"><div class="spinner"></div></div>';
@@ -864,7 +877,6 @@ function attachPhraseSelectListeners() {
 
 // -- Vibe Man: Waiting for Guesses ---------------------------
 
-// Update a single mini-dial in the grid without re-rendering the whole page
 // -- Shared mini-dial card renderer --------------------------------
 function renderMiniDialCard(p, knownMap) {
   const CX = 100, CY = 100, R = 82;
@@ -1072,7 +1084,7 @@ function renderGuessing() {
         <div class="section-title">What number is this vibe?</div>
 
         <div class="dial-wrap">
-          <svg class="dial-svg" id="dial-svg" viewBox="0 0 300 170" xmlns="http://www.w3.org/2000/svg">
+          <svg class="dial-svg" id="dial-svg" viewBox="0 0 300 170" xmlns="http://www.w3.org/2000/svg" style="cursor:grab;">
             <defs>
               <linearGradient id="dialGrad" x1="0%" y1="0%" x2="100%" y2="0%">
                 <stop offset="0%"   stop-color="#10b981" />
@@ -1098,8 +1110,6 @@ function renderGuessing() {
             <line class="dial-needle" id="dial-needle" x1="150" y1="150" x2="20" y2="150" />
             <!-- Center pivot -->
             <circle class="dial-pivot" cx="150" cy="150" r="10" />
-            <!-- Drag target (invisible large circle for easy grab) -->
-            <circle id="dial-hit" cx="150" cy="150" r="140" fill="transparent" style="cursor:grab;" />
           </svg>
 
           <!-- Value readout -->
@@ -1200,8 +1210,16 @@ function attachGuessListeners() {
   function handleMove(clientX, clientY) {
     const pt = getSVGPoint(clientX, clientY);
     const dx = pt.x - CX;
-    const dy = CY - pt.y;  // flip y so up = positive
-    // Only respond in the upper hemisphere (dy >= -30 allows slight below-center drag)
+    const dy = CY - pt.y;  // positive = above centre line, negative = below
+
+    // Below the horizontal centre line: snap to the nearest extreme endpoint
+    // Left half  → value 1  (angle π)
+    // Right half → value 100 (angle 0)
+    if (dy < 0) {
+      updateDial(dx < 0 ? 1 : 100);
+      return;
+    }
+
     const angle = Math.atan2(dy, dx);
     const clamped = Math.max(0, Math.min(Math.PI, angle));
     updateDial(angleToValue(clamped));
@@ -1222,7 +1240,7 @@ function attachGuessListeners() {
   });
 
   window.addEventListener('mouseup', () => {
-    if (dragging) { dragging = false; svg.style.cursor = ''; }
+    if (dragging) { dragging = false; svg.style.cursor = 'grab'; }
   });
 
   // Touch support
@@ -1393,10 +1411,6 @@ function renderResults() {
       </div>
     </div>
   `;
-}
-
-function attachResultsListeners() {
-  // Rounds auto-advance on the server — nothing to attach.
 }
 
 // -- Game Over -----------------------------------------------

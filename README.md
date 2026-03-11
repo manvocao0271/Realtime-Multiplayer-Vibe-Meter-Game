@@ -35,9 +35,8 @@ Rounds continue until a player reaches the points goal:
 ## Running Locally
 
 ```bash
-npm install
-npm start        # node server.js  →  http://localhost:3000
-npm run dev      # nodemon (auto-restart on changes)
+pip install -r requirements.txt
+python app.py   # →  http://localhost:3000
 ```
 
 Share `http://<your-local-ip>:3000` with anyone on the same Wi-Fi.
@@ -54,30 +53,34 @@ Cloudflare will print a public `https://` URL — share that with anyone, anywhe
 
 | Terminal | Command | Purpose |
 |----------|---------|---------|
-| 1 | `npm start` | Start the Node.js game server on `localhost:3000` |
+| 1 | `python app.py` | Start the Python game server on `localhost:3000` |
 | 2 | `cloudflared tunnel --url localhost:3000` | Expose the server publicly via Cloudflare Tunnel |
 
-**Stack:** Node.js · Express · Socket.IO (WebSockets)
+**Stack:** Python · Flask · Flask-SocketIO · eventlet (WebSockets)
 
 ---
 
 ## Current Architecture
 
-The current implementation is a **single-process monolith**:
+The backend is a **single-process Python monolith**:
 
 ```
 Browser (Socket.IO client)
         │  WebSocket
         ▼
-  Node.js / Express
-  ┌─────────────────────────┐
-  │  In-memory game state   │  ← one global `game` object
-  │  (Map, arrays, flags)   │
-  │  Socket.IO server       │
-  └─────────────────────────┘
+  Python / Flask + Flask-SocketIO (eventlet)
+  ┌──────────────────────────────────────────┐
+  │  Player  ◄──  ActivePlayer               │
+  │          ◄──  SpectatorPlayer            │
+  │                                          │
+  │  VibeMeterGame  (all phases & scoring)   │  ← one global instance
+  │  Socket event handlers                   │
+  └──────────────────────────────────────────┘
 ```
 
-All game state lives in a single JavaScript object in memory. Every event (`join`, `story`, `guess`, `next`) mutates that object and calls `broadcast()`, which rebuilds a personalised state snapshot for each connected socket and pushes it out simultaneously.
+Game state lives in a `VibeMeterGame` instance. Players are modelled via a small class hierarchy (`Player` → `ActivePlayer` / `SpectatorPlayer`). Every Socket.IO event mutates the instance and calls `broadcast()`, which rebuilds a personalised state snapshot for each connected socket and pushes it out simultaneously.
+
+Background tasks (15-second guess timer, 5-second round-advance) are managed with `socketio.start_background_task()` and cancelled via token objects — replacing a token on the game instance safely invalidates any stale task without threading primitives.
 
 This is intentionally minimal — no database, no authentication, no persistence between sessions.
 
