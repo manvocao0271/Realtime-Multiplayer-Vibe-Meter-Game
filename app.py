@@ -1,8 +1,9 @@
+import math
 import os
 import random
 import time
-import eventlet
-eventlet.monkey_patch()
+from gevent import monkey
+monkey.patch_all()
 
 from flask import Flask, send_from_directory, request, redirect
 from flask_socketio import SocketIO, emit
@@ -10,7 +11,7 @@ from flask_socketio import SocketIO, emit
 # ─── Flask & SocketIO setup ───────────────────────────────────────────────────
 
 app = Flask(__name__)
-socketio = SocketIO(app, cors_allowed_origins='*', async_mode='eventlet')
+socketio = SocketIO(app, cors_allowed_origins='*', async_mode='gevent')
 
 # Short, readable room codes — no visually ambiguous characters (0/O, 1/I/L)
 _ROOM_ALPHA = 'BCDFGHJKMNPQRSTVWXYZ2345679'
@@ -115,7 +116,9 @@ class VibeMeterGame:
         self.round_results: list[dict] = []
         self.vibe_man_pts: int | None = None
         self.guess_deadline: int | None = None      # epoch-ms for client countdown
+        self.guess_duration: int = 15              # seconds for the guess timer
         self.game_won: bool = False
+        self.current_vibe_man_sid: str | None = None  # actual VM for the current round
 
         # Late-joiners approved for next round
         self.pending_players: set[str] = set()
@@ -123,8 +126,8 @@ class VibeMeterGame:
         # Token objects used to cancel stale background tasks without threading primitives.
         # A task checks "game._some_token is captured_token" before acting; replacing or
         # nulling the token here is sufficient to prevent stale execution.
-        self._guess_token = None
-        self._advance_token = None
+        self._guess_token: object | None = None
+        self._advance_token: object | None = None
 
     # ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -168,7 +171,11 @@ class VibeMeterGame:
         return result
 
     def build_state(self, sid: str) -> dict:
-        vm = self.vibe_man_id()
+        # Use the round's actual VM during results so a disconnected VM is still credited
+        if self.round_phase == 'round-results' and self.current_vibe_man_sid:
+            vm = self.current_vibe_man_sid
+        else:
+            vm = self.vibe_man_id()
         is_vibeman = vm == sid
         player = self.players.get(sid)
         is_spectator = player.spectator if player else True
@@ -218,6 +225,8 @@ class VibeMeterGame:
             'roundResults': self.round_results if self.round_phase == 'round-results' else [],
             'vibeManPts': self.vibe_man_pts if self.round_phase == 'round-results' else None,
             'guessDeadline': self.guess_deadline if self.round_phase == 'guessing' else None,
+            'guessDuration': self.guess_duration if self.round_phase == 'guessing' else None,
+            'pendingPlayerIds': list(self.pending_players),
             'currentVibeManIdx': self.vibe_man_rotation_idx,
             'totalVibeManSlots': len(self.vibe_man_rotation),
         }
@@ -237,7 +246,6 @@ class VibeMeterGame:
             p = self.players.get(sid)
             if p:
                 p.spectator = False
-                p.score = 0
             if sid not in self.vibe_man_rotation:
                 self.vibe_man_rotation.append(sid)
         self.pending_players.clear()
@@ -264,6 +272,7 @@ class VibeMeterGame:
         self._guess_token = None
         self._advance_token = None
 
+        self.current_vibe_man_sid = self.vibe_man_id()
         self.round_phase = 'phrase-select'
 
     def resolve_round(self) -> None:
@@ -272,37 +281,47 @@ class VibeMeterGame:
 
         # Auto-submit for any eligible player who didn't lock in a guess:
         # use their last live drag position, or 50 as a neutral fallback.
-        vm = self.vibe_man_id()
+        vm = self.current_vibe_man_sid or self.vibe_man_id()
         for p in self.active_players():
             pid = p['id']
             if pid != vm and pid not in self.guesses:
                 self.guesses[pid] = self.live_positions.get(pid, 50)
 
         results = []
-        for sid, guess in self.guesses.items():
-            diff = abs(guess - self.random_value)
-            pts = 3 if diff <= 3 else (2 if diff <= 4 else (1 if diff <= 5 else 0))
-            p = self.players.get(sid)
-            if p:
-                p.score += pts
-                if pts == 3:
-                    p.bullseyes += 1
-            results.append({
-                'id': sid,
-                'name': p.name if p else '?',
-                'guess': guess,
-                'diff': diff,
-                'pts': pts,
-            })
+        if self.random_value is not None:
+            in_extreme_true = self.random_value <= 5 or self.random_value >= 96
+            for sid, guess in self.guesses.items():
+                diff = abs(guess - self.random_value)
+                base_pts = 7 if diff == 0 else (3 if diff <= 5 else (2 if diff <= 7 else (1 if diff <= 9 else 0)))
+                in_extreme_guess = guess <= 5 or guess >= 96
+                if in_extreme_guess:
+                    pts = base_pts * 2 if in_extreme_true else 0
+                else:
+                    pts = base_pts
+                p = self.players.get(sid)
+                if p:
+                    p.score += pts
+                    if diff == 0:
+                        p.bullseyes += 1
+                results.append({
+                    'id': sid,
+                    'name': p.name if p else '?',
+                    'guess': guess,
+                    'diff': diff,
+                    'pts': pts,
+                    'extremeGuess': in_extreme_guess,
+                    'extremeTrue': in_extreme_true,
+                })
         results.sort(key=lambda r: (-r['pts'], r['diff']))
         self.round_results = results
 
-        vm = self.vibe_man_id()
         if results:
-            vm_pts = sum(r['pts'] for r in results)
-            vm_player = self.players.get(vm)
-            if vm_player:
-                vm_player.score += vm_pts
+            avg_pts = sum(r['pts'] for r in results) / len(results)
+            vm_pts = math.ceil(avg_pts)
+            if vm is not None:
+                vm_player = self.players.get(vm)
+                if vm_player:
+                    vm_player.score += vm_pts
             self.vibe_man_pts = vm_pts
         else:
             self.vibe_man_pts = 0
@@ -343,6 +362,11 @@ def broadcast(code: str) -> None:
             socketio.emit('state', game.build_state(sid), to=sid)
 
 
+def _sid() -> str:
+    """Return the socket ID of the current Flask-SocketIO connection."""
+    return request.sid  # type: ignore[attr-defined]
+
+
 # ─── Background Task Helpers ──────────────────────────────────────────────────
 
 def start_guess_timer(code: str) -> None:
@@ -351,9 +375,10 @@ def start_guess_timer(code: str) -> None:
         return
     token = object()
     game._guess_token = token
+    duration = game.guess_duration
 
     def _run() -> None:
-        socketio.sleep(15)
+        socketio.sleep(duration)
         g = rooms.get(code)
         if g is None or g._guess_token is not token:
             return
@@ -441,7 +466,7 @@ def catch_all(path: str):
 
 @socketio.on('connect')
 def on_connect():
-    sid = request.sid
+    sid = _sid()
     code = request.args.get('room', '').upper()
     if not code or code not in rooms:
         emit('err', 'Invalid or expired room.')
@@ -453,7 +478,7 @@ def on_connect():
 
 @socketio.on('join')
 def on_join(data):
-    sid = request.sid
+    sid = _sid()
     pair = _game_for(sid)
     if not pair:
         return
@@ -478,7 +503,8 @@ def on_join(data):
         if old_id in game.vibe_man_rotation:
             idx = game.vibe_man_rotation.index(old_id)
             game.vibe_man_rotation[idx] = sid
-        else:
+        elif not player_data.spectator:
+            # Only restore active (non-spectator) players to the rotation
             game.vibe_man_rotation.append(sid)
 
         if game.host == old_id:
@@ -514,7 +540,7 @@ def on_join(data):
 
 @socketio.on('start')
 def on_start(data):
-    sid = request.sid
+    sid = _sid()
     pair = _game_for(sid)
     if not pair:
         return
@@ -538,7 +564,7 @@ def on_start(data):
 
 @socketio.on('phrase')
 def on_phrase(data):
-    sid = request.sid
+    sid = _sid()
     pair = _game_for(sid)
     if not pair:
         return
@@ -554,7 +580,7 @@ def on_phrase(data):
         return emit('err', 'Both phrases are required.')
 
     player = game.players.get(sid)
-    if not player:
+    if not player or player.spectator:
         return
 
     game.phrases.append({
@@ -571,14 +597,25 @@ def on_phrase(data):
         if all(aid in game.phrase_submissions for aid in active_ids):
             game.begin_game()
         broadcast(code)
-    elif game.phase == 'playing' and player.spectator:
-        game.pending_players.add(sid)
-        broadcast(code)
+
+
+@socketio.on('join-next-round')
+def on_join_next_round():
+    sid = _sid()
+    pair = _game_for(sid)
+    if not pair:
+        return
+    code, game = pair
+    player = game.players.get(sid)
+    if not player or not player.spectator:
+        return
+    game.pending_players.add(sid)
+    broadcast(code)
 
 
 @socketio.on('select-phrase')
 def on_select_phrase(data):
-    sid = request.sid
+    sid = _sid()
     pair = _game_for(sid)
     if not pair:
         return
@@ -609,7 +646,7 @@ def on_select_phrase(data):
 
 @socketio.on('story')
 def on_story(data):
-    sid = request.sid
+    sid = _sid()
     pair = _game_for(sid)
     if not pair:
         return
@@ -625,14 +662,15 @@ def on_story(data):
 
     game.story = story
     game.round_phase = 'guessing'
-    game.guess_deadline = int(time.time() * 1000) + 15_000
+    game.guess_duration = 15 + min(sum(1 for c in story if c != ' '), 15)
+    game.guess_deadline = int(time.time() * 1000) + game.guess_duration * 1000
     start_guess_timer(code)
     broadcast(code)
 
 
 @socketio.on('live-pos')
 def on_live_pos(data):
-    sid = request.sid
+    sid = _sid()
     pair = _game_for(sid)
     if not pair:
         return
@@ -662,7 +700,7 @@ def on_live_pos(data):
 
 @socketio.on('guess')
 def on_guess(data):
-    sid = request.sid
+    sid = _sid()
     pair = _game_for(sid)
     if not pair:
         return
@@ -693,7 +731,7 @@ def on_guess(data):
 
 @socketio.on('restart')
 def on_restart():
-    sid = request.sid
+    sid = _sid()
     pair = _game_for(sid)
     if not pair:
         return
@@ -708,7 +746,7 @@ def on_restart():
 
 @socketio.on('disconnect')
 def on_disconnect():
-    sid = request.sid
+    sid = _sid()
     pair = _game_for(sid)
     sid_to_room.pop(sid, None)
     print(f'[-] Disconnected: {sid}')
@@ -731,6 +769,8 @@ def on_disconnect():
         return
 
     player.disconnected = True
+    # Demote to spectator so they leave the active rotation and appear in the spectators list
+    player.spectator = True
     game.pending_players.discard(sid)
     was_vibe_man = game.vibe_man_id() == sid
 
@@ -743,14 +783,27 @@ def on_disconnect():
         if game.vibe_man_rotation:
             game.vibe_man_rotation_idx %= len(game.vibe_man_rotation)
 
+    if game.phase == 'phrase-input':
+        # If all remaining active players have submitted, the game can begin
+        active_ids = {p['id'] for p in game.active_players()}
+        if len(active_ids) < 2:
+            game.phase = 'lobby'  # not enough players to continue
+        elif active_ids and all(aid in game.phrase_submissions for aid in active_ids):
+            game.begin_game()
+        broadcast(code)
+        return
+
     if game.phase != 'playing':
         broadcast(code)
         return
 
-    # Vibe Man left before writing — skip to next player
-    if was_vibe_man and game.round_phase in ('phrase-select', 'vibe-writing'):
-        game.start_round()
-        broadcast(code)
+    # Vibe Man left — skip to next player or resolve the current round
+    if was_vibe_man and game.round_phase in ('phrase-select', 'vibe-writing', 'guessing'):
+        if game.round_phase == 'guessing':
+            resolve_and_advance(code)
+        else:
+            game.start_round()
+            broadcast(code)
         return
 
     # A guesser left — resolve early if no one eligible remains
@@ -773,4 +826,7 @@ if __name__ == '__main__':
     print(f'\n\U0001f3ae  Vibe Meter is running!')
     print(f'   \u279c  http://localhost:{PORT}')
     print(f'   Visit / to create a new room \u2014 share the URL with friends!\n')
-    socketio.run(app, host='0.0.0.0', port=PORT)
+    try:
+        socketio.run(app, host='0.0.0.0', port=PORT)
+    except KeyboardInterrupt:
+        print('\nStopped.')

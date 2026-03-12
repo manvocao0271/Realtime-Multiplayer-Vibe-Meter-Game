@@ -140,44 +140,50 @@ p  { color: var(--text-muted); }
 /* Sidebar hidden by default; shown when wrapper has .with-sidebar */
 #leaderboard-sidebar {
   display: none;
-  width: 220px;
+  width: 260px;
   flex-shrink: 0;
   position: sticky;
   top: 68px;
   max-height: calc(100vh - 80px);
   overflow-y: auto;
-  padding: 1.5rem 1rem 2rem 0;
+  padding: 1.5rem 0.5rem 2rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 #app-wrapper.with-sidebar #leaderboard-sidebar {
-  display: block;
+  display: flex;
 }
 
 /* ── Leaderboard Sidebar ────────────────────────────── */
 .lb-header {
-  font-size: 0.72rem;
+  font-size: 0.8rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: var(--text-dim);
-  margin-bottom: 0.6rem;
+  margin-bottom: 0.75rem;
+  text-align: center;
+  width: 100%;
 }
 
 .lb-list {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.5rem;
+  width: 100%;
 }
 
 .lb-row {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.45rem 0.6rem;
+  padding: 0.55rem 0.75rem;
   border-radius: var(--radius-sm);
   background: var(--card);
   border: 1px solid var(--border);
-  font-size: 0.82rem;
+  font-size: 0.9rem;
   transition: background 0.2s;
 }
 
@@ -213,14 +219,12 @@ p  { color: var(--text-muted); }
 .lb-pname {
   flex: 1;
   font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .lb-pts {
   font-weight: 800;
-  font-size: 1rem;
+  font-size: 1.1rem;
   color: var(--primary);
   min-width: 1.8rem;
   text-align: right;
@@ -248,8 +252,60 @@ p  { color: var(--text-muted); }
   gap: 0.4rem;
   font-size: 0.8rem;
   color: var(--text-muted);
-  padding: 0.2rem 0;
+  padding: 0.25rem 0.25rem;
+  border-radius: var(--radius-sm);
 }
+
+.lb-spec-row.lb-spec-pending { color: var(--text); }
+
+.lb-spec-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lb-spec-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--success);
+  background: rgba(16,185,129,0.1);
+  border: 1px solid rgba(16,185,129,0.3);
+  padding: 1px 5px;
+  border-radius: 99px;
+  flex-shrink: 0;
+}
+
+/* Leaderboard entry: streak-col | [row box] | delta-col */
+.lb-entry {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.lb-row { flex: 1; min-width: 0; }
+
+.lb-streak-col {
+  width: 2.6rem;
+  text-align: right;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #fbbf24;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.lb-delta-col {
+  min-width: 2rem;
+  text-align: left;
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: #a78bfa;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.lb-away { font-size: 0.65rem; opacity: 0.5; }
 
 @media (max-width: 860px) {
   #leaderboard-sidebar { display: none !important; }
@@ -583,7 +639,7 @@ textarea {
 
 /* Numeric readout — sits below the SVG in normal document flow */
 .dial-readout {
-  font-size: 5rem;
+  font-size: 7rem;
   font-weight: 900;
   line-height: 1;
   margin-top: 0.6rem;
@@ -592,7 +648,7 @@ textarea {
   -webkit-text-fill-color: transparent;
   background-clip: text;
   pointer-events: none;
-  min-width: 5rem;
+  min-width: 6rem;
   text-align: center;
 }
 
@@ -762,6 +818,9 @@ textarea {
 .result-row.pts-3 { border-color: var(--success); background: rgba(16,185,129,0.1); }
 .result-row.pts-2 { border-color: var(--warning); background: rgba(245,158,11,0.08); }
 .result-row.pts-1 { border-color: var(--accent);  background: rgba(6,182,212,0.07); }
+.result-row.pts-7 { border-color: #fbbf24;         background: rgba(251,191,36,0.12); }
+.result-row.pts-extreme-win  { border-color: #f59e0b; background: rgba(245,158,11,0.13); box-shadow: 0 0 0 1px rgba(245,158,11,0.25); }
+.result-row.pts-extreme-miss { border-color: #475569; background: rgba(71,85,105,0.08); opacity: 0.65; }
 
 .result-pts {
   font-size: 1.4rem;
@@ -774,6 +833,8 @@ textarea {
 .result-pts.pts-2 { color: var(--warning); }
 .result-pts.pts-1 { color: var(--accent);  }
 .result-pts.pts-0 { color: var(--text-dim); }
+.result-pts.pts-7 { color: #fbbf24; }
+.result-pts.pts-extreme-win { color: #f59e0b; }
 
 .result-name { font-weight: 600; flex: 1; }
 .result-guess { font-size: 0.85rem; color: var(--text-muted); }
