@@ -30,9 +30,13 @@ function startGuessCountdown() {
   if (!deadline) return;
 
   // Sync CSS animation bar
-  const elapsed = Math.max(0, (Date.now() - (deadline - 15000)) / 1000);
+  const durMs = (currentState?.guessDuration ?? 15) * 1000;
+  const elapsed = Math.max(0, (Date.now() - (deadline - durMs)) / 1000);
   const bar = document.getElementById('guess-timer-bar');
-  if (bar) bar.style.animationDelay = `-${elapsed}s`;
+  if (bar) {
+    bar.style.animationDuration = `${currentState?.guessDuration ?? 15}s`;
+    bar.style.animationDelay = `-${elapsed}s`;
+  }
 
   // integer countdown text
   function tick() {
@@ -83,10 +87,7 @@ function render() {
     return;
   }
 
-  const inGame = currentState.phase === 'playing' || currentState.phase === 'game-over' ||
-                 (currentState.phase === 'phrase-input' && currentState.players.length > 0);
-
-  if (inGame) {
+  if (currentState.phase === 'playing') {
     appWrapper.classList.add('with-sidebar');
     document.getElementById('leaderboard-sidebar').innerHTML = renderLeaderboard();
   } else {
@@ -105,6 +106,12 @@ function render() {
       attachLobbyListeners();
       break;
     case 'phrase-input': {
+      if (currentState.isSpectator) {
+        app.innerHTML = renderSpectator();
+        attachSpectatorListeners();
+        lastRenderKey = null;
+        break;
+      }
       // Key encodes the structural state -- only full-render on structural change.
       // Incremental updates (other players submitting) are patched in-place
       // so the input boxes are never destroyed while the user is typing.
@@ -122,13 +129,20 @@ function render() {
       // Avoid destroying mini-dial DOM while live positions are streaming in.
       const s = currentState;
       let playKey = null;
-      if (!s.isSpectator && s.roundPhase === 'guessing') {
-        playKey = s.isVibeman
-          ? `playing:guessing:vibe-man:${s.totalGuessers}`
-          : `playing:guessing:${s.hasSubmittedGuess ? 'post' : 'pre'}`;
+      if (!s.isSpectator) {
+        if (s.roundPhase === 'vibe-writing' && !s.isVibeman) {
+          playKey = 'playing:vibe-writing';
+        } else if (s.roundPhase === 'guessing') {
+          playKey = s.isVibeman
+            ? `playing:guessing:vibe-man:${s.totalGuessers}`
+            : `playing:guessing:${s.hasSubmittedGuess ? 'post' : 'pre'}`;
+        }
       }
       if (playKey && lastRenderKey === playKey) {
-        s.isVibeman ? patchVibeManWaiting() : patchGuesserGuessing();
+        if (s.roundPhase === 'guessing') {
+          s.isVibeman ? patchVibeManWaiting() : patchGuesserGuessing();
+        }
+        // vibe-writing: static screen, skip re-render
       } else {
         renderPlaying(app);
       }
@@ -159,6 +173,13 @@ function renderLeaderboard() {
 
   const medalEmoji = ['&#x1F947;', '&#x1F948;', '&#x1F949;'];
 
+  // Build a pts-this-round map for the results phase
+  const deltaMap = {};
+  if (s.roundPhase === 'round-results') {
+    (s.roundResults || []).forEach(r => { deltaMap[r.id] = r.pts; });
+    if (s.vibeManId != null && s.vibeManPts != null) deltaMap[s.vibeManId] = s.vibeManPts;
+  }
+
   return `
     <div class="lb-header">
       Leaderboard
@@ -168,12 +189,16 @@ function renderLeaderboard() {
       ${ranked.map((p, i) => {
         const isYou = p.id === s.myId;
         const bulls = p.bullseyes || 0;
+        const delta = deltaMap[p.id];
         return `
-          <div class="lb-row ${isYou ? 'lb-you' : ''} ${p.disconnected ? 'lb-disconnected' : ''}">
-            ${bulls > 0 ? `<span class="lb-bullseye" title="${bulls} bullseye${bulls !== 1 ? 's' : ''}">${bulls}x&#127919;</span>` : '<span class="lb-bullseye"></span>'}
-            <span class="lb-medal">${medalEmoji[i] !== undefined ? medalEmoji[i] : ''}</span>
-            <span class="lb-pname">${esc(p.name)}${p.disconnected ? ' <span style="font-size:0.65rem;opacity:0.5;">(away)</span>' : ''}</span>
-            <span class="lb-pts">${p.score}</span>
+          <div class="lb-entry">
+            <span class="lb-streak-col">${bulls > 0 ? `${bulls}x&#127919;` : ''}</span>
+            <div class="lb-row ${isYou ? 'lb-you' : ''} ${p.disconnected ? 'lb-disconnected' : ''}">
+              <span class="lb-medal">${medalEmoji[i] !== undefined ? medalEmoji[i] : ''}</span>
+              <span class="lb-pname">${esc(p.name)}${p.disconnected ? ' <span class="lb-away">(away)</span>' : ''}</span>
+              <span class="lb-pts">${p.score}</span>
+            </div>
+            <span class="lb-delta-col">${delta != null && delta > 0 ? `+${delta}` : ''}</span>
           </div>
         `;
       }).join('')}
@@ -181,14 +206,14 @@ function renderLeaderboard() {
     ${spectators.length > 0 ? `
       <div class="lb-spectators">
         <div class="lb-spec-title">Spectating</div>
-        ${spectators.map(p => `
-          <div class="lb-spec-row">
-            <span>${esc(p.name)}</span>
-            ${(s.isPending && p.id === s.myId)
-              ? '<span style="font-size:0.7rem;color:var(--success);">ready next</span>'
-              : ''}
-          </div>
-        `).join('')}
+        ${spectators.map(p => {
+          const pending = (s.pendingPlayerIds || []).includes(p.id);
+          return `
+          <div class="lb-spec-row ${pending ? 'lb-spec-pending' : ''}">
+            <span class="lb-spec-name">${esc(p.name)}${p.disconnected ? ' <span class="lb-away">(away)</span>' : ''}</span>
+            ${pending ? '<span class="lb-spec-badge">&#10003;</span>' : ''}
+          </div>`;
+        }).join('')}
       </div>
     ` : ''}
   `;
@@ -226,7 +251,7 @@ function renderJoin() {
       ` : ''}
       <div class="form-group">
         <label for="name-input">Your Name</label>
-        <input type="text" id="name-input" placeholder="Enter your name..." maxlength="20"
+        <input type="text" id="name-input" placeholder="Enter your name..." maxlength="10"
                value="${esc(myName)}" autocomplete="off" autocorrect="off" spellcheck="false" />
       </div>
       <button class="btn btn-primary btn-full btn-lg" id="join-btn" style="margin-top:1rem;">
@@ -506,7 +531,7 @@ function renderPlaying(app) {
 
   if (s.isSpectator) {
     app.innerHTML = renderSpectator();
-    attachSpectatorPhraseListeners();
+    attachSpectatorListeners();
     return;
   }
 
@@ -516,9 +541,9 @@ function renderPlaying(app) {
       if (s.isVibeman) attachPhraseSelectListeners();
       break;
     case 'vibe-writing':
-      app.innerHTML = s.isVibeman ? renderVibeManWrite() : renderWaitForVibeman();
+      app.innerHTML = s.isVibeman ? renderVibeManWrite() : renderGuessing();
       if (s.isVibeman) attachStoryListeners();
-      else attachWaitDialAnimation();
+      else attachGuessListeners();
       break;
     case 'guessing':
       app.innerHTML = s.isVibeman ? renderVibeManWaiting() : renderGuessing();
@@ -537,97 +562,62 @@ function renderPlaying(app) {
 function renderSpectator() {
   const s = currentState;
   const currentPhrase = s.currentPhrase;
-
-  if (s.spectatorSubmittedPhrase) {
-    return `
-      <div class="fade-in">
-        <div class="card" style="text-align:center;padding:2rem;margin-bottom:1rem;">
-          <div style="font-size:2.5rem;margin-bottom:0.5rem;">&#128065;</div>
-          <h3>Spectating</h3>
-          <p style="margin-top:0.4rem;">Your phrase is queued. You'll join as a full player at the start of the next round!</p>
-          <div class="callout callout-success" style="margin-top:1rem;text-align:left;">
-            <div class="callout-title">Phrase submitted &mdash; you're in the queue</div>
-            <p>Sit back and watch. Points start at <strong>0</strong> when you join.</p>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="section-title">Current Round</div>
-          ${renderVibeManBanner(s)}
-          ${currentPhrase ? renderPhraseStrip(currentPhrase) : ''}
-          ${s.story ? `
-            <div class="section-title" style="margin-top:1rem;">Vibe Story</div>
-            <div class="story-box">${esc(s.story)}</div>
-          ` : `
-            <p style="font-size:0.9rem;margin-top:0.5rem;">
-              <span class="waiting-pulse"></span> Waiting for ${esc(s.vibeManName)} to write their story...
-            </p>
-          `}
-        </div>
-      </div>
-    `;
-  }
+  const gameStarted = s.phase === 'playing';
 
   return `
     <div class="fade-in">
-      <div class="phase-hero" style="padding-top:1rem;">
-        <span class="emoji-big">&#128065;</span>
-        <h2>Spectating Game</h2>
-        <p>Submit a phrase pair to join the action on the next round!</p>
-      </div>
-
-      <div class="card fade-in">
-        <div class="section-title">Submit your phrase to join</div>
-        <div class="stack">
-          <div class="form-group">
-            <label for="label1-input">Phrase 1 &mdash; the 1 end</label>
-            <input type="text" id="label1-input" placeholder='e.g. "green flag"'
-                   maxlength="50" value="${esc(saved.label1)}" autocomplete="off" />
+      <div class="card" style="margin-bottom:1rem;">
+        <div style="display:flex;align-items:center;gap:0.75rem;${s.isPending ? 'margin-bottom:0.75rem;' : 'margin-bottom:0.5rem;'}">
+          <span style="font-size:2rem;">&#128065;</span>
+          <div>
+            <h3 style="margin:0;">Spectating</h3>
+            <p style="margin:0;font-size:0.85rem;">Watching this round.</p>
           </div>
-          <div class="form-group">
-            <label for="label2-input">Phrase 2 &mdash; the 100 end</label>
-            <input type="text" id="label2-input" placeholder='e.g. "red flag"'
-                   maxlength="50" value="${esc(saved.label2)}" autocomplete="off" />
-          </div>
-          <button class="btn btn-primary btn-full" id="spectator-phrase-btn">
-            Submit &amp; Join Next Round
-          </button>
         </div>
-      </div>
-
-      <div class="card" style="margin-top:1rem;">
-        <div class="section-title">Current Round</div>
-        ${renderVibeManBanner(s)}
-        ${currentPhrase ? renderPhraseStrip(currentPhrase) : ''}
-        ${s.story ? `
-          <div class="section-title" style="margin-top:1rem;">Vibe Story</div>
-          <div class="story-box">${esc(s.story)}</div>
+        ${s.isPending ? `
+          <div class="callout callout-success">
+            <div class="callout-title">&#10003; You're in for next round!</div>
+            <p>You'll be a full player starting on the next round.</p>
+          </div>
         ` : `
-          <p style="font-size:0.9rem;margin-top:0.5rem;">
-            <span class="waiting-pulse"></span> Waiting for ${esc(s.vibeManName)} to write their story...
-          </p>
+          <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
+            <p style="margin:0;flex:1;font-size:0.85rem;min-width:0;">Watch the action &mdash; jump in whenever you're ready.</p>
+            <button class="btn btn-primary" id="join-next-round-btn" style="flex-shrink:0;">Join Next Round</button>
+          </div>
         `}
       </div>
+
+      ${gameStarted ? `
+        <div class="card">
+          <div class="section-title">Round ${s.roundNumber}</div>
+          ${renderVibeManBanner(s)}
+          ${currentPhrase ? renderPhraseStrip(currentPhrase) : ''}
+          ${s.story ? `
+            <div class="section-title" style="margin-top:1rem;">The Vibe Story</div>
+            <div class="story-box">${esc(s.story)}</div>
+          ` : s.roundPhase === 'phrase-select' ? `
+            <p style="font-size:0.85rem;margin-top:0.5rem;color:var(--text-muted);">
+              <span class="waiting-pulse"></span> ${esc(s.vibeManName)} is choosing a phrase&hellip;
+            </p>
+          ` : s.vibeManName ? `
+            <p style="font-size:0.85rem;margin-top:0.5rem;color:var(--text-muted);">
+              <span class="waiting-pulse"></span> ${esc(s.vibeManName)} is writing their story&hellip;
+            </p>
+          ` : ''}
+        </div>
+      ` : `
+        <div class="card">
+          <p style="font-size:0.9rem;color:var(--text-muted);"><span class="waiting-pulse"></span> Waiting for the game to start&hellip;</p>
+        </div>
+      `}
     </div>
   `;
 }
 
-function attachSpectatorPhraseListeners() {
-  const l1 = document.getElementById('label1-input');
-  const l2 = document.getElementById('label2-input');
-  const btn = document.getElementById('spectator-phrase-btn');
-
-  l1?.addEventListener('input', () => { saved.label1 = l1.value; });
-  l2?.addEventListener('input', () => { saved.label2 = l2.value; });
-
+function attachSpectatorListeners() {
+  const btn = document.getElementById('join-next-round-btn');
   btn?.addEventListener('click', () => {
-    const label1 = l1?.value.trim();
-    const label2 = l2?.value.trim();
-    if (!label1 || !label2) return showToast('Both phrases are required.', 'error');
-    if (label1.toLowerCase() === label2.toLowerCase()) return showToast('Phrases must be different.', 'error');
-    socket.emit('phrase', { label1, label2 });
-    saved.label1 = '';
-    saved.label2 = '';
+    socket.emit('join-next-round');
   });
 }
 
@@ -759,67 +749,54 @@ function attachStoryListeners() {
 }
 
 // -- Waiting for Vibe Man ------------------------------------
-function attachWaitDialAnimation() {
-  const needle = document.getElementById('wait-needle');
-  if (!needle) return;
-  const CX = 150, CY = 150, R = 112;
-  const T = 4000; // full cycle ms (left → right → left)
-  const startTs = performance.now();
-  function tick(ts) {
-    // Stop if the element has been removed from the DOM (state changed)
-    if (!document.getElementById('wait-needle')) return;
-    const elapsed = ts - startTs;
-    // Cosine oscillation: angle goes π → 0 → π smoothly with natural ease at both ends
-    const angle = (Math.PI / 2) * (1 + Math.cos((2 * Math.PI * elapsed) / T));
-    needle.setAttribute('x2', (CX + R * Math.cos(angle)).toFixed(2));
-    needle.setAttribute('y2', (CY - R * Math.sin(angle)).toFixed(2));
-    requestAnimationFrame(tick);
+const WAIT_TIPS = [
+  { emoji: '&#128172;', text: 'Talk it out — what does a 1 actually look like on this phrase? What does a 100?' },
+  { emoji: '&#129504;', text: 'Pre-commit to a gut range before the story even drops so you\'re not starting cold.' },
+  { emoji: '&#128064;', text: 'How well do you know the Vibe Man? Watch the their reaction and pace — nerves can mean an extreme number.' },
+  { emoji: '&#127919;', text: 'Exact guesses score 7 pts. If the phrase has an obvious extreme, it might be worth camping it.' },
+  { emoji: '&#128200;', text: 'Check the leaderboard — know who\'s running hot. Their reading of this Vibe Man might be worth matching.' },
+  { emoji: '&#129300;', text: 'Remember: the Vibe Man earns the avg of your points x2. Good writing = they want you all close.' },
+  { emoji: '&#9878;&#65039;', text: 'Think about how this specific Vibe Man writes — do they go literal, poetic, deadpan, or chaotic?' },
+  { emoji: '&#128257;', text: 'You have 15–30 seconds once the story drops. Lock in fast — second-guessing rarely helps.' },
+  { emoji: '&#127756;', text: 'Numbers near 50 are safer but rarely score big. Commit to a direction if you have any read at all.' },
+  { emoji: '&#128293;', text: 'Has this Vibe Man gone extreme before? People often cluster their stories in a comfort zone.' },
+  { emoji: '&#129517;', text: 'The spectrum ends anchor everything. Re-read them now so they\'re fresh when the story hits.' },
+  { emoji: '&#128483;', text: 'Silence can be a tell. Is the Vibe Man quiet and focused, or laughing? Both reveal something.' },
+  { emoji: '&#128293;', text: 'Guessing 1–5 or 96–100 is the Extreme Zone — all or nothing. If the true value is also extreme, you get 6 pts (or 14 for a direct hit). If it\'s not, you score zero.' },
+  { emoji: '&#9889;', text: 'The Extreme Zone is only 5 values wide on each end. So you have a 1 in 5 shot to earn 14 points on a direct hit and 6 otherwise!' },
+  { emoji: '&#129520;', text: 'If you suspect the true number is extreme but aren\'t sure which end, staying just outside (6 or 95) is safer — you still score normally without the all-or-nothing penalty.' },
+  { emoji: '&#129513;', text: 'Guessing 6 or 95 when you suspect an extreme true value is often the smartest play — if the answer is 1 or 100, you still pocket 3 pts with zero risk.' },
+  { emoji: '&#127919;', text: 'The 2-pt and 1-pt brackets exist for a reason. Consistent near-misses (within 7–9) will out-score someone swinging for exact hits and hitting zero most rounds.' },
+];
+
+// ============================================================
+//  TIP DECK  (shuffled, one tip per round)
+// ============================================================
+let _tipDeck = [];
+let _tipIdx  = 0;
+let _currentRoundTip = null;
+
+function _nextTipFromDeck() {
+  if (_tipIdx >= _tipDeck.length) {
+    _tipDeck = Array.from({ length: WAIT_TIPS.length }, (_, i) => i);
+    for (let i = _tipDeck.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [_tipDeck[i], _tipDeck[j]] = [_tipDeck[j], _tipDeck[i]];
+    }
+    _tipIdx = 0;
   }
-  requestAnimationFrame(tick);
+  return WAIT_TIPS[_tipDeck[_tipIdx++]];
 }
 
-function renderWaitForVibeman() {
-  const s = currentState;
+function _tipHTML(tip) {
   return `
-    <div class="fade-in">
-      ${renderVibeManBanner(s)}
-
-      <div class="card" style="text-align:center;padding:2rem;">
-        <div style="font-size:3rem;margin-bottom:0.75rem;">&#128161;</div>
-        <h3><span class="waiting-pulse"></span> Waiting for ${esc(s.vibeManName)} to write their story...</h3>
-        <p style="margin-top:0.5rem;">The Vibe Man has a secret number and is crafting a vibe story.</p>
-      </div>
-
-      <div class="card" style="margin-top:1rem;">
-        <div class="dial-wrap" style="margin:0.5rem 0 0;">
-          <svg class="dial-svg" viewBox="0 0 300 170" xmlns="http://www.w3.org/2000/svg">
-            <defs>
-              <linearGradient id="dialGradWait" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%"   stop-color="#10b981" />
-                <stop offset="50%"  stop-color="#a855f7" />
-                <stop offset="100%" stop-color="#ef4444" />
-              </linearGradient>
-            </defs>
-            <path class="dial-track" d="M 20,150 A 130,130 0 0,1 280,150" />
-            <path class="dial-fill" d="M 20,150 A 130,130 0 0,1 280,150"
-              style="stroke-dasharray:408.41;stroke-dashoffset:0;stroke:url(#dialGradWait);" />
-            <line class="dial-needle" id="wait-needle" x1="150" y1="150" x2="38" y2="150" />
-            <circle class="dial-pivot" cx="150" cy="150" r="10" />
-          </svg>
-          <div class="dial-labels">
-            <div class="dial-label-left">
-              <span class="dial-label-num">1</span>
-              <span class="phrase-label-1">${esc(s.currentPhrase?.label1 || '')}</span>
-            </div>
-            <div class="dial-label-right">
-              <span class="dial-label-num">100</span>
-              <span class="phrase-label-2">${esc(s.currentPhrase?.label2 || '')}</span>
-            </div>
-          </div>
-        </div>
-      </div>
+  <div class="card" style="margin-top:1rem;padding:1rem 1.25rem;display:flex;align-items:flex-start;gap:0.9rem;">
+    <span style="font-size:1.75rem;flex-shrink:0;line-height:1.2;">${tip.emoji}</span>
+    <div>
+      <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:0.3rem;">While you wait</div>
+      <p style="margin:0;font-size:0.92rem;color:var(--text);font-style:italic;">${tip.text}</p>
     </div>
-  `;
+  </div>`;
 }
 
 // -- Phrase Select Screen ------------------------------------
@@ -831,7 +808,7 @@ function renderPhraseSelect() {
 
       <div class="card highlight">
         <div style="text-align:center;margin-bottom:1rem;">
-          <span class="badge badge-yellow" style="font-size:0.95rem;padding:0.35rem 0.75rem;">TASK: Vibe Man &mdash; Choose a Phrase</span>
+          <span class="badge badge-yellow" style="font-size:0.95rem;padding:0.35rem 0.75rem;">TASK: Vibe Man</span>
         </div>
         <div style="text-align:center;margin-bottom:1.25rem;color:var(--text-muted);font-size:0.9rem;">
           Pick the phrase you'll use to describe your secret vibe.
@@ -959,11 +936,9 @@ function renderVibeManWaiting() {
         <div class="big-number" style="font-size:3.5rem;">${s.randomValue}</div>
       </div>
 
-      <div class="callout callout-info" style="text-align:center;padding:0.85rem 1rem;margin-bottom:1rem;">
-        <p id="guess-timer-secs" style="font-size:0.9rem;margin-bottom:0.6rem;">15 seconds...</p>
-        <div class="countdown-bar-wrap">
-          <div class="countdown-bar-15" id="guess-timer-bar"></div>
-        </div>
+      <div class="card" style="margin-bottom:1rem;">
+        <div class="section-title">Your Story</div>
+        <div class="story-box">${esc(s.story)}</div>
       </div>
 
       <div class="card" style="margin-bottom:1rem;">
@@ -979,9 +954,11 @@ function renderVibeManWaiting() {
         </div>
       </div>
 
-      <div class="card">
-        <div class="section-title">Your Story</div>
-        <div class="story-box">${esc(s.story)}</div>
+      <div class="callout callout-info" style="text-align:center;padding:0.85rem 1rem;margin-bottom:1rem;">
+        <p id="guess-timer-secs" style="font-size:0.9rem;margin-bottom:0.6rem;">15 seconds...</p>
+        <div class="countdown-bar-wrap">
+          <div class="countdown-bar-15" id="guess-timer-bar"></div>
+        </div>
       </div>
     </div>
   `;
@@ -1015,20 +992,99 @@ function patchGuesserGuessing() {
 // -- Guessing Phase ------------------------------------------
 function renderGuessing() {
   const s = currentState;
+  const isWaiting  = s.roundPhase === 'vibe-writing';
+  const hasGuessed = s.hasSubmittedGuess;
+  if (!_currentRoundTip) _currentRoundTip = _nextTipFromDeck();
+
+  const label1 = esc(s.currentPhrase?.label1 || '');
+  const label2 = esc(s.currentPhrase?.label2 || '');
   const v = saved.guessValue;
 
-  if (s.hasSubmittedGuess) {
+  const dialTicks = Array.from({length: 11}, (_, i) => {
+    const angle = Math.PI - (i / 10) * Math.PI;
+    const r1 = 116, r2 = 144, cx = 150, cy = 150;
+    const x1 = cx + r1 * Math.cos(angle); const y1 = cy - r1 * Math.sin(angle);
+    const x2 = cx + r2 * Math.cos(angle); const y2 = cy - r2 * Math.sin(angle);
+    return `<line class="dial-tick${i === 0 || i === 10 ? ' dial-tick-end' : ''}" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" />`;
+  }).join('');
+
+  const dialSVG = `
+    <div class="dial-wrap" style="margin:0.5rem 0 0;">
+      <svg class="dial-svg" id="dial-svg" viewBox="0 0 300 170" xmlns="http://www.w3.org/2000/svg"${isWaiting ? '' : ' style="cursor:grab;"'}>
+        <defs>
+          <linearGradient id="dialGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%"   stop-color="#10b981" />
+            <stop offset="50%"  stop-color="#a855f7" />
+            <stop offset="100%" stop-color="#ef4444" />
+          </linearGradient>
+        </defs>
+        <path class="dial-track" d="M 20,150 A 130,130 0 0,1 280,150" />
+        <path class="dial-fill" id="dial-fill" d="M 20,150 A 130,130 0 0,1 280,150"
+          style="stroke-dasharray:408.41;" />
+        ${dialTicks}
+        <line class="dial-needle" id="dial-needle" x1="150" y1="150" x2="20" y2="150" />
+        <circle class="dial-pivot" cx="150" cy="150" r="10" />
+      </svg>
+      ${isWaiting ? '' : `<div class="dial-readout" id="guess-display">${v}</div>`}
+      <div class="dial-labels">
+        <div class="dial-label-left">
+          <span class="dial-label-num">1</span>
+          <span class="phrase-label-1">${label1}</span>
+        </div>
+        <div class="dial-label-right">
+          <span class="dial-label-num">100</span>
+          <span class="phrase-label-2">${label2}</span>
+        </div>
+      </div>
+    </div>`;
+
+  // -- Waiting for vibe man to write --
+  if (isWaiting) {
     return `
       <div class="fade-in">
         ${renderVibeManBanner(s)}
+        <div class="card" style="text-align:center;padding:2rem;">
+          <div style="font-size:3rem;margin-bottom:0.75rem;">&#128161;</div>
+          <h3><span class="waiting-pulse"></span> ${esc(s.vibeManName)} is writing their story...</h3>
+          <p style="margin-top:0.5rem;">The Vibe Man has a secret number and is crafting a vibe story.</p>
+        </div>
+        ${_tipHTML(_currentRoundTip)}
+        <div class="card" style="margin-top:1rem;">${dialSVG}</div>
+      </div>`;
+  }
 
+  // -- Guess submitted, waiting for others --
+  if (hasGuessed) {
+    const otherGuessers = (s.players || []).filter(p => !p.spectator && p.id !== s.vibeManId && p.id !== s.myId);
+    let miniDialsHtml = '';
+    if (otherGuessers.length > 0) {
+      const knownMap = {};
+      (s.liveGuesses || []).forEach(g => { knownMap[g.id] = g; });
+      const pct = s.totalGuessers > 0 ? Math.round((s.guessCount / s.totalGuessers) * 100) : 0;
+      const cols = otherGuessers.length === 1 ? 1 : otherGuessers.length <= 4 ? 2 : otherGuessers.length <= 9 ? 3 : 4;
+      miniDialsHtml = `
+        <div class="card" style="margin-top:1rem;">
+          <div class="row-between" style="margin-bottom:0.6rem;">
+            <div class="section-title" style="margin:0;">Others' Guesses</div>
+            <span id="guesser-guess-count" style="font-weight:700;">${s.guessCount} / ${s.totalGuessers}</span>
+          </div>
+          <div class="progress-bar" style="margin-bottom:1rem;">
+            <div id="guesser-guess-progress" class="progress-fill" style="width:${pct}%"></div>
+          </div>
+          <div class="mini-dial-grid" style="--mini-cols:${cols};">
+            ${otherGuessers.map(p => renderMiniDialCard(p, knownMap)).join('')}
+          </div>
+        </div>`;
+    }
+    return `
+      <div class="fade-in">
+        ${renderVibeManBanner(s)}
         <div class="callout callout-info" style="text-align:center;padding:0.85rem 1rem;margin-bottom:1rem;">
           <p id="guess-timer-secs" style="font-size:0.9rem;margin-bottom:0.6rem;">15 seconds...</p>
           <div class="countdown-bar-wrap">
             <div class="countdown-bar-15" id="guess-timer-bar"></div>
           </div>
         </div>
-
         <div class="card" style="text-align:center;padding:1.5rem;">
           <div style="font-size:2.5rem;margin-bottom:0.5rem;">&#10003;</div>
           <h3>Guess locked in: <span class="gradient-text">${s.myGuess}</span></h3>
@@ -1037,114 +1093,62 @@ function renderGuessing() {
             Waiting for ${s.totalGuessers - s.guessCount} more player(s)...
           </p>
         </div>
-
+        ${_tipHTML(_currentRoundTip)}
         <div class="card" style="margin-top:1rem;">
+          <div class="section-title" style="margin-bottom:0.6rem;">The Vibe Story from ${esc(s.vibeManName)}</div>
           <div class="story-box">${esc(s.story)}</div>
         </div>
-
-        ${(() => {
-          const otherGuessers = (s.players || []).filter(p => !p.spectator && p.id !== s.vibeManId && p.id !== s.myId);
-          if (otherGuessers.length === 0) return '';
-          const knownMap = {};
-          (s.liveGuesses || []).forEach(g => { knownMap[g.id] = g; });
-          const pct = s.totalGuessers > 0 ? Math.round((s.guessCount / s.totalGuessers) * 100) : 0;
-          const cols = otherGuessers.length === 1 ? 1 : otherGuessers.length <= 4 ? 2 : otherGuessers.length <= 9 ? 3 : 4;
-          return `
-            <div class="card" style="margin-top:1rem;">
-              <div class="row-between" style="margin-bottom:0.6rem;">
-                <div class="section-title" style="margin:0;">Others' Guesses</div>
-                <span id="guesser-guess-count" style="font-weight:700;">${s.guessCount} / ${s.totalGuessers}</span>
-              </div>
-              <div class="progress-bar" style="margin-bottom:1rem;">
-                <div id="guesser-guess-progress" class="progress-fill" style="width:${pct}%"></div>
-              </div>
-              <div class="mini-dial-grid" style="--mini-cols:${cols};">
-                ${otherGuessers.map(p => renderMiniDialCard(p, knownMap)).join('')}
-              </div>
-            </div>
-          `;
-        })()}
-      </div>
-    `;
+        ${miniDialsHtml}
+      </div>`;
   }
 
-  const label1 = esc(s.currentPhrase?.label1 || '');
-  const label2 = esc(s.currentPhrase?.label2 || '');
-
+  // -- Pre-submit: story + interactive dial --
   return `
     <div class="fade-in">
       ${renderVibeManBanner(s)}
-
-      <div class="card" style="margin-bottom:1rem;">
+      ${_tipHTML(_currentRoundTip)}
+      <div class="card highlight" style="margin-top:1rem;">
         <div class="section-title">The Vibe Story from ${esc(s.vibeManName)}</div>
-        <div class="story-box">${esc(s.story)}</div>
-      </div>
-
-      <div class="card highlight">
+        <div class="story-box" style="margin-bottom:1rem;">${esc(s.story)}</div>
         <div class="section-title">What number is this vibe?</div>
-
-        <div class="dial-wrap">
-          <svg class="dial-svg" id="dial-svg" viewBox="0 0 300 170" xmlns="http://www.w3.org/2000/svg" style="cursor:grab;">
-            <defs>
-              <linearGradient id="dialGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%"   stop-color="#10b981" />
-                <stop offset="50%"  stop-color="#a855f7" />
-                <stop offset="100%" stop-color="#ef4444" />
-              </linearGradient>
-            </defs>
-            <!-- Track arc background -->
-            <path class="dial-track" d="M 20,150 A 130,130 0 0,1 280,150" />
-            <!-- Filled arc: same path as track, revealed via stroke-dashoffset -->
-            <path class="dial-fill" id="dial-fill" d="M 20,150 A 130,130 0 0,1 280,150" />
-            <!-- Tick marks -->
-            ${Array.from({length: 11}, (_, i) => {
-              const angle = Math.PI - (i / 10) * Math.PI;
-              const r1 = 116, r2 = 144, cx = 150, cy = 150;
-              const x1 = cx + r1 * Math.cos(angle);
-              const y1 = cy - r1 * Math.sin(angle);
-              const x2 = cx + r2 * Math.cos(angle);
-              const y2 = cy - r2 * Math.sin(angle);
-              return `<line class="dial-tick${i === 0 || i === 10 ? ' dial-tick-end' : ''}" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" />`;
-            }).join('')}
-            <!-- Needle -->
-            <line class="dial-needle" id="dial-needle" x1="150" y1="150" x2="20" y2="150" />
-            <!-- Center pivot -->
-            <circle class="dial-pivot" cx="150" cy="150" r="10" />
-          </svg>
-
-          <!-- Value readout -->
-          <div class="dial-readout" id="guess-display">${v}</div>
-
-          <!-- Phrase labels at the ends -->
-          <div class="dial-labels">
-            <div class="dial-label-left">
-              <span class="dial-label-num">1</span>
-              <span class="phrase-label-1">${label1}</span>
-            </div>
-            <div class="dial-label-right">
-              <span class="dial-label-num">100</span>
-              <span class="phrase-label-2">${label2}</span>
-            </div>
-          </div>
-        </div>
-
+        ${dialSVG}
         <button class="btn btn-success btn-full btn-lg" id="guess-submit-btn" style="margin-top:1rem;">
           Lock In My Guess
         </button>
       </div>
-
       <div class="callout callout-info" style="text-align:center;padding:0.85rem 1rem;margin-bottom:1rem;">
         <p id="guess-timer-secs" style="font-size:0.9rem;margin-bottom:0.6rem;">15 seconds...</p>
         <div class="countdown-bar-wrap">
           <div class="countdown-bar-15" id="guess-timer-bar"></div>
         </div>
       </div>
-
-    </div>
-  `;
+    </div>`;
 }
 
 function attachGuessListeners() {
+  const s = currentState;
+
+  // -- Waiting state: locked oscillating dial, no timer --
+  if (s.roundPhase === 'vibe-writing') {
+    const needle = document.getElementById('dial-needle');
+    const fill   = document.getElementById('dial-fill');
+    if (!needle) return;
+    if (fill) { fill.style.strokeDasharray = '408.41'; fill.style.strokeDashoffset = '0'; }
+    const CX = 150, CY = 150, R = 112, T = 4000;
+    const startTs = performance.now();
+    function tick(ts) {
+      if (!document.getElementById('dial-needle')) return;
+      const elapsed = ts - startTs;
+      const angle = (Math.PI / 2) * (1 + Math.cos((2 * Math.PI * elapsed) / T));
+      needle.setAttribute('x2', (CX + R * Math.cos(angle)).toFixed(2));
+      needle.setAttribute('y2', (CY - R * Math.sin(angle)).toFixed(2));
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+    return;
+  }
+
+  // -- Guessing state: interactive dial --
   startGuessCountdown();
   const svg     = document.getElementById('dial-svg');
   const needle  = document.getElementById('dial-needle');
@@ -1267,11 +1271,16 @@ function attachGuessListeners() {
 
 // -- Round / Phrase Results ----------------------------------
 function renderResults() {
+  _currentRoundTip = null;
   const s = currentState;
   const phrase = s.currentPhrase;
   const results = s.roundResults || [];
 
-  const ptColor = pts => pts === 3 ? '#10b981' : pts === 2 ? '#3b82f6' : pts === 1 ? '#f59e0b' : '#ef4444';
+  const ptColor = r => {
+    if (r.extremeGuess && r.pts > 0)  return '#f59e0b'; // extreme win — orange-gold
+    if (r.extremeGuess && r.pts === 0) return '#64748b'; // extreme miss — grey
+    return r.pts >= 7 ? '#fbbf24' : r.pts >= 3 ? '#10b981' : r.pts >= 2 ? '#3b82f6' : r.pts >= 1 ? '#f59e0b' : '#ef4444';
+  };
   const DCXR = 130, DCX = 150, DCY = 150;
   const TIP_R = DCXR - 16; // needle tips just inside the arc
   const ANS_R = DCXR - 7;  // answer sits right on the arc
@@ -1281,7 +1290,7 @@ function renderResults() {
     const a  = dialAngle(r.guess);
     const tx = (DCX + TIP_R * Math.cos(a)).toFixed(1);
     const ty = (DCY - TIP_R * Math.sin(a)).toFixed(1);
-    const c  = ptColor(r.pts);
+    const c  = ptColor(r);
     const init = esc(r.name.slice(0, 2).toUpperCase());
     return `<line x1="${DCX}" y1="${DCY}" x2="${tx}" y2="${ty}" stroke="${c}" stroke-width="2.5" stroke-linecap="round" opacity="0.85"/>
       <circle cx="${tx}" cy="${ty}" r="11" fill="${c}" stroke="rgba(0,0,0,0.35)" stroke-width="1.5"/>
@@ -1295,11 +1304,24 @@ function renderResults() {
     <circle cx="${ax}" cy="${ay}" r="13" fill="#fbbf24" stroke="rgba(0,0,0,0.45)" stroke-width="2"/>
     <text x="${ax}" y="${(parseFloat(ay)+4.5).toFixed(1)}" text-anchor="middle" font-size="9" font-weight="900" fill="#000">${s.randomValue}</text>`;
 
-  const anyPerfect = results.some(r => r.pts === 3);
+  const anyPerfect = results.some(r => r.pts >= 3);
+  const anyExtremeWin = results.some(r => r.extremeGuess && r.pts > 0);
 
-  // Trigger confetti if the local player hit a bullseye this round
+  // Find closest guesser (smallest diff)
+  const closestResult = results.length > 0
+    ? results.reduce((best, r) => r.diff < best.diff ? r : best, results[0])
+    : null;
+  const heroBullseye = closestResult && closestResult.diff === 0;
+  const heroEmoji = heroBullseye ? '&#127919;' : anyExtremeWin ? '&#128293;' : anyPerfect ? '&#127881;' : '&#128517;';
+  const heroText = closestResult
+    ? (heroBullseye
+        ? `${esc(closestResult.name)} hit a bullseye!`
+        : `${esc(closestResult.name)} was closest!`)
+    : 'Round over!';
+
+  // Trigger confetti if the local player scored big
   const myResult = results.find(r => r.id === currentState.myId);
-  if (myResult && myResult.pts === 3) {
+  if (myResult && (myResult.pts >= 7 || (myResult.extremeGuess && myResult.pts >= 4))) {
     setTimeout(launchConfetti, 100);
   }
 
@@ -1307,11 +1329,9 @@ function renderResults() {
     <div class="fade-in">
       ${renderVibeManBanner(s)}
 
-      <div class="card ${anyPerfect ? 'success' : ''}" style="text-align:center;padding:1.5rem;margin-bottom:1rem;">
-        ${anyPerfect
-          ? `<div style="font-size:2.5rem;margin-bottom:0.25rem;">&#127881;</div><h3>Someone nailed it!</h3>`
-          : `<div style="font-size:2.5rem;margin-bottom:0.25rem;">&#128517;</div><h3>Close, but no bullseye!</h3>`
-        }
+      <div class="card ${heroBullseye ? 'success' : ''}" style="text-align:center;padding:1.5rem;margin-bottom:1rem;">
+        <div style="font-size:2.5rem;margin-bottom:0.25rem;">${heroEmoji}</div>
+        <h3>${heroText}</h3>
         <p style="margin-top:0.3rem;">
           The secret number was <strong style="color:var(--text);font-size:1.1em;">${s.randomValue}</strong>
         </p>
@@ -1348,59 +1368,15 @@ function renderResults() {
         </div>
         <div style="display:flex;justify-content:center;gap:0.75rem;font-size:0.72rem;flex-wrap:wrap;color:var(--text-muted);margin-top:0.4rem;padding-bottom:0.25rem;">
           <span style="color:#fbbf24;font-weight:700;">&#9679; Answer</span>
-          <span style="color:#10b981;">&#9679; Bullseye</span>
-          <span style="color:#3b82f6;">&#9679; Close</span>
-          <span style="color:#f59e0b;">&#9679; Nearly</span>
+          <span style="color:#fbbf24;opacity:0.75;">&#9679; Exact (7 pts)</span>
+          <span style="color:#10b981;">&#9679; Close (3 pts)</span>
+          <span style="color:#3b82f6;">&#9679; Near (2 pts)</span>
+          <span style="color:#f59e0b;">&#9679; OK (1 pt) / Extreme win</span>
+          <span style="color:#64748b;">&#9679; Extreme miss</span>
           <span style="color:#ef4444;">&#9679; Miss</span>
         </div>
-      </div>
-
-      <div class="card" style="margin-bottom:1rem;">
-        <div class="section-title">The Vibe Story by ${esc(s.vibeManName)}</div>
+        <div class="section-title" style="margin-top:1.25rem;">The Vibe Story by ${esc(s.vibeManName)}</div>
         <div class="story-box">${esc(s.story)}</div>
-      </div>
-
-      <div class="card" style="margin-bottom:1.5rem;">
-        <div class="section-title">This Round's Scores</div>
-        <div class="stack-sm">
-          ${results.map(r => `
-            <div class="result-row pts-${r.pts}">
-              <div class="result-pts pts-${r.pts}">
-                ${r.pts > 0 ? '+' + r.pts : '--'}
-              </div>
-              <div class="player-avatar avatar-${(s.players.findIndex(p => p.id === r.id)) % 8}">
-                ${esc(r.name[0].toUpperCase())}
-              </div>
-              <div style="flex:1;">
-                <div class="result-name">${esc(r.name)}</div>
-                <div class="result-diff">Guessed ${r.guess} &middot; off by ${r.diff}</div>
-              </div>
-              <div style="font-size:0.8rem;color:var(--text-dim);">
-                ${r.diff <= 3 ? 'Bullseye!' : r.diff <= 4 ? 'Close!' : r.diff <= 5 ? 'Nearly!' : 'Miss'}
-              </div>
-            </div>
-          `).join('')}
-          ${s.vibeManPts != null ? (() => {
-            const vmPts = s.vibeManPts;
-            const vmIdx = s.players.findIndex(p => p.id === s.vibeManId);
-            const totalGuesserPts = results.reduce((sum, r) => sum + r.pts, 0);
-            const label = totalGuesserPts === 0 ? 'Misleading...' : totalGuesserPts <= 2 ? 'Decent hint!' : totalGuesserPts <= 5 ? 'Great story!' : 'Story on point!';
-            return `
-            <div class="result-row pts-${vmPts > 0 ? 'vm' : '0'}" style="border-top:1px solid rgba(255,255,255,0.07);margin-top:0.25rem;padding-top:0.5rem;">
-              <div class="result-pts" style="background:rgba(168,85,247,0.15);color:#c084fc;border-color:rgba(168,85,247,0.3);min-width:2.5rem;">
-                ${vmPts > 0 ? '+' + vmPts : '--'}
-              </div>
-              <div class="player-avatar avatar-${vmIdx % 8}">
-                ${esc(s.vibeManName[0].toUpperCase())}
-              </div>
-              <div style="flex:1;">
-                <div class="result-name">${esc(s.vibeManName)} <span style="font-size:0.75rem;opacity:0.6;">(Vibe Man)</span></div>
-                <div class="result-diff">Sum of guessers' points: ${totalGuesserPts}</div>
-              </div>
-              <div style="font-size:0.8rem;color:var(--text-dim);">${label}</div>
-            </div>`;
-          })() : ''}
-        </div>
       </div>
 
       <div class="callout callout-info" style="text-align:center;padding:0.85rem 1rem;">
