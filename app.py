@@ -128,6 +128,7 @@ class VibeMeterGame:
         # nulling the token here is sufficient to prevent stale execution.
         self._guess_token: object | None = None
         self._advance_token: object | None = None
+        self._results_paused: bool = False
 
     # ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -229,6 +230,7 @@ class VibeMeterGame:
             'pendingPlayerIds': list(self.pending_players),
             'currentVibeManIdx': self.vibe_man_rotation_idx,
             'totalVibeManSlots': len(self.vibe_man_rotation),
+            'resultsPaused': self._results_paused if self.round_phase == 'round-results' else False,
         }
 
     # ── Phase Transitions ────────────────────────────────────────────────────
@@ -271,6 +273,7 @@ class VibeMeterGame:
         # Nulling these tokens invalidates any background tasks from the previous round
         self._guess_token = None
         self._advance_token = None
+        self._results_paused = False
 
         self.current_vibe_man_sid = self.vibe_man_id()
         self.round_phase = 'phrase-select'
@@ -397,7 +400,7 @@ def _schedule_advance(code: str) -> None:
     token = game._advance_token
 
     def _run() -> None:
-        socketio.sleep(5)
+        socketio.sleep(10)
         g = rooms.get(code)
         if g is None or g._advance_token is not token:
             return
@@ -611,6 +614,63 @@ def on_join_next_round():
         return
     game.pending_players.add(sid)
     broadcast(code)
+
+
+@socketio.on('advance-round')
+def on_advance_round():
+    sid = _sid()
+    pair = _game_for(sid)
+    if not pair:
+        return
+    code, game = pair
+    if game.round_phase != 'round-results':
+        return
+    if game.current_vibe_man_sid != sid:
+        return
+    # Invalidate scheduled timer, then advance immediately
+    game._advance_token = object()
+    if game.game_won:
+        game.end_game()
+    else:
+        game.vibe_man_rotation_idx = (
+            (game.vibe_man_rotation_idx + 1) % max(1, len(game.vibe_man_rotation))
+        )
+        game.start_round()
+    broadcast(code)
+
+
+@socketio.on('pause-round')
+def on_pause_round():
+    sid = _sid()
+    pair = _game_for(sid)
+    if not pair:
+        return
+    code, game = pair
+    if game.round_phase != 'round-results':
+        return
+    if game.current_vibe_man_sid != sid:
+        return
+    # Cancel the scheduled auto-advance; the Vibe Man must resume or skip manually
+    game._advance_token = object()
+    game._results_paused = True
+    broadcast(code)
+
+
+@socketio.on('resume-round')
+def on_resume_round():
+    sid = _sid()
+    pair = _game_for(sid)
+    if not pair:
+        return
+    code, game = pair
+    if game.round_phase != 'round-results':
+        return
+    if game.current_vibe_man_sid != sid:
+        return
+    game._results_paused = False
+    game._advance_token = object()
+    broadcast(code)
+    _schedule_advance(code)
 
 
 @socketio.on('select-phrase')
