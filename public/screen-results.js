@@ -29,6 +29,7 @@ function renderResults() {
   }).join('');
 
   const diffColor = (diff) => {
+    if (diff === 0) return '#d946ef';
     if (diff <= 5) return '#34d399';
     if (diff <= 7) return '#fbbf24';
     if (diff <= 9) return '#fb923c';

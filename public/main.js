@@ -31,10 +31,12 @@ function render() {
   const appWrapper = document.getElementById('app-wrapper');
   const app        = document.getElementById('app');
   const meta       = document.getElementById('header-meta');
+  const sidebar    = document.getElementById('leaderboard-sidebar');
 
   if (!currentState || !currentState.myName) {
     meta.innerHTML = '';
     appWrapper.classList.remove('with-sidebar');
+    sidebar.innerHTML = '';
     app.innerHTML = renderJoin();
     attachJoinListeners();
     return;
@@ -42,10 +44,11 @@ function render() {
 
   if (currentState.phase === 'playing') {
     appWrapper.classList.add('with-sidebar');
-    document.getElementById('leaderboard-sidebar').innerHTML = renderLeaderboard();
+    sidebar.innerHTML = renderLeaderboard();
     attachSidebarListeners();
   } else {
     appWrapper.classList.remove('with-sidebar');
+    sidebar.innerHTML = '';
   }
 
   meta.innerHTML = `
