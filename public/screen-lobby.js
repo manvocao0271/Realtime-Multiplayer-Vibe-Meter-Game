@@ -71,10 +71,10 @@ function attachLobbyListeners() {
   document.getElementById('start-btn')?.addEventListener('click', () => {
     socket.emit('start', { pointsGoal: selectedGoal });
   });
-  document.getElementById('copy-link-btn')?.addEventListener('click', () => {
-    const btn = document.getElementById('copy-link-btn');
+  const copyBtn = document.getElementById('copy-link-btn');
+  copyBtn?.addEventListener('click', () => {
     navigator.clipboard.writeText(window.location.href).then(() => {
-      if (btn) { btn.textContent = 'Copied!'; setTimeout(() => { if (btn) btn.textContent = 'Copy'; }, 2000); }
+      if (copyBtn) { copyBtn.textContent = 'Copied!'; setTimeout(() => { if (copyBtn) copyBtn.textContent = 'Copy'; }, 2000); }
     });
   });
 }

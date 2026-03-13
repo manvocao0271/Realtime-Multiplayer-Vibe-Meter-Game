@@ -20,13 +20,7 @@ function renderResults() {
   const ax = (CX + R * Math.cos(answerAngle)).toFixed(1);
   const ay = (CY - R * Math.sin(answerAngle)).toFixed(1);
 
-  const dialTicks = Array.from({length: 11}, (_, i) => {
-    const angle = Math.PI - (i / 10) * Math.PI;
-    const r1 = 116, r2 = 144;
-    const x1 = CX + r1 * Math.cos(angle), y1 = CY - r1 * Math.sin(angle);
-    const x2 = CX + r2 * Math.cos(angle), y2 = CY - r2 * Math.sin(angle);
-    return `<line class="dial-tick${i === 0 || i === 10 ? ' dial-tick-end' : ''}" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" />`;
-  }).join('');
+  const dialTicks = buildDialTicks();
 
   const diffColor = (diff) => {
     if (diff === 0) return '#d946ef';
@@ -156,13 +150,32 @@ function renderResults() {
       </div>
 
       <div class="card results-timer-ctrl" style="margin-top:1rem;">
-        <p style="font-size:0.85rem;text-align:center;margin-bottom:0.5rem;color:var(--text-dim);">Next round starting&hellip;</p>
+        <div class="results-timer-head">
+          <p style="font-size:0.85rem;margin:0;color:var(--text-dim);">
+            Next round starting in <span id="results-next-round-secs">10 seconds</span>&hellip;
+          </p>
+          ${s.isVibeman ? `
+            <button class="btn ${s.roundResultsFast ? 'btn-secondary' : 'btn-primary'}" id="speed-up-next-round-btn"
+                    ${s.roundResultsFast ? 'disabled' : ''}
+                    style="padding:0.35rem 0.7rem;font-size:0.78rem;">
+              ${s.roundResultsFast ? '2x Enabled' : '2x Speed'}
+            </button>
+          ` : ''}
+        </div>
         <div class="countdown-bar-wrap">
-          <div class="countdown-bar-10"></div>
+          <div class="countdown-bar-10" id="results-timer-bar"></div>
         </div>
       </div>
     </div>
   `;
 }
 
-function attachResultsListeners() {}
+function attachResultsListeners() {
+  const btn = document.getElementById('speed-up-next-round-btn');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    btn.setAttribute('disabled', 'true');
+    btn.textContent = '2x Enabled';
+    socket.emit('speed-up-next-round');
+  });
+}

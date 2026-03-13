@@ -3,16 +3,6 @@
 // ============================================================
 
 function renderPhraseInputDialForm() {
-  const dialTicks = Array.from({ length: 11 }, (_, i) => {
-    const angle = Math.PI - (i / 10) * Math.PI;
-    const r1 = 116, r2 = 144, cx = 150, cy = 150;
-    const x1 = cx + r1 * Math.cos(angle);
-    const y1 = cy - r1 * Math.sin(angle);
-    const x2 = cx + r2 * Math.cos(angle);
-    const y2 = cy - r2 * Math.sin(angle);
-    return `<line class="dial-tick${i === 0 || i === 10 ? ' dial-tick-end' : ''}" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" />`;
-  }).join('');
-
   return `
     <div class="card highlight fade-in phrase-input-card">
       <div class="phrase-dial-shell">
@@ -28,7 +18,7 @@ function renderPhraseInputDialForm() {
             <path class="dial-track" d="M 20,150 A 130,130 0 0,1 280,150" />
             <path class="dial-fill phrase-dial-fill" d="M 20,150 A 130,130 0 0,1 280,150"
               style="stroke-dasharray:408.41;stroke-dashoffset:0;stroke:url(#phraseInputDialGrad);" />
-            ${dialTicks}
+            ${buildDialTicks()}
             <circle class="phrase-dial-endpoint phrase-dial-endpoint-left" cx="20" cy="150" r="8" />
             <circle class="phrase-dial-endpoint phrase-dial-endpoint-right" cx="280" cy="150" r="8" />
           </svg>
@@ -49,6 +39,31 @@ function renderPhraseInputDialForm() {
           Submit Phrases
         </button>
       </div>
+    </div>
+  `;
+}
+
+// -- Shared phrase-input player card -------------------------
+function renderPhraseCard(p, s, done, phrase) {
+  const idx = (s.players || []).indexOf(p);
+  return `
+    <div class="phrase-card ${p.id === s.myId ? 'current' : ''}">
+      <div class="player-avatar avatar-${idx % 8}">
+        ${esc(p.name[0].toUpperCase())}
+      </div>
+      <div>
+        <div style="font-weight:600;font-size:0.9rem;">${esc(p.name)}</div>
+        ${phrase ? `
+          <div style="font-size:0.8rem;color:var(--text-muted);margin-top:0.15rem;">
+            <span class="phrase-label-1">${esc(phrase.label1)}</span>
+            <span class="phrase-vs">vs</span>
+            <span class="phrase-label-2">${esc(phrase.label2)}</span>
+          </div>
+        ` : '<div style="font-size:0.8rem;color:var(--text-dim);margin-top:0.15rem;">Typing...</div>'}
+      </div>
+      <span class="phrase-submitted-badge" style="margin-left:auto;">
+        ${done ? '&#10003;' : '<span class="waiting-pulse" style="margin:0;"></span>'}
+      </span>
     </div>
   `;
 }
@@ -86,26 +101,8 @@ function renderPhraseInput() {
       <div class="stack-sm">
         ${activePl.map(p => {
           const done = submitted.includes(p.id);
-          return `
-            <div class="phrase-card ${p.id === s.myId ? 'current' : ''}">
-              <div class="player-avatar avatar-${(s.players || []).indexOf(p) % 8}">
-                ${esc(p.name[0].toUpperCase())}
-              </div>
-              <div>
-                <div style="font-weight:600;font-size:0.9rem;">${esc(p.name)}</div>
-                ${done && s.phrases.find(ph => ph.byId === p.id) ? `
-                  <div style="font-size:0.8rem;color:var(--text-muted);margin-top:0.15rem;">
-                    <span class="phrase-label-1">${esc(s.phrases.find(ph => ph.byId === p.id).label1)}</span>
-                    <span class="phrase-vs">vs</span>
-                    <span class="phrase-label-2">${esc(s.phrases.find(ph => ph.byId === p.id).label2)}</span>
-                  </div>
-                ` : '<div style="font-size:0.8rem;color:var(--text-dim);margin-top:0.15rem;">Typing...</div>'}
-              </div>
-              <span class="phrase-submitted-badge" style="margin-left:auto;">
-                ${done ? '&#10003;' : '<span class="waiting-pulse" style="margin:0;"></span>'}
-              </span>
-            </div>
-          `;
+          const phrase = done ? s.phrases.find(ph => ph.byId === p.id) : null;
+          return renderPhraseCard(p, s, done, phrase);
         }).join('')}
       </div>
     </div>
@@ -136,26 +133,7 @@ function patchPhraseInput() {
     stackSm.innerHTML = activePl.map(p => {
       const done = submitted.includes(p.id);
       const phrase = done ? s.phrases.find(ph => ph.byId === p.id) : null;
-      return `
-        <div class="phrase-card ${p.id === s.myId ? 'current' : ''}">
-          <div class="player-avatar avatar-${(s.players || []).indexOf(p) % 8}">
-            ${esc(p.name[0].toUpperCase())}
-          </div>
-          <div>
-            <div style="font-weight:600;font-size:0.9rem;">${esc(p.name)}</div>
-            ${phrase ? `
-              <div style="font-size:0.8rem;color:var(--text-muted);margin-top:0.15rem;">
-                <span class="phrase-label-1">${esc(phrase.label1)}</span>
-                <span class="phrase-vs">vs</span>
-                <span class="phrase-label-2">${esc(phrase.label2)}</span>
-              </div>
-            ` : '<div style="font-size:0.8rem;color:var(--text-dim);margin-top:0.15rem;">Typing...</div>'}
-          </div>
-          <span class="phrase-submitted-badge" style="margin-left:auto;">
-            ${done ? '&#10003;' : '<span class="waiting-pulse" style="margin:0;"></span>'}
-          </span>
-        </div>
-      `;
+      return renderPhraseCard(p, s, done, phrase);
     }).join('');
   }
 }

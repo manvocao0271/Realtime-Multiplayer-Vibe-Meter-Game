@@ -3,6 +3,39 @@
 // ============================================================
 
 function renderJoin() {
+  if (!roomCode) {
+    return `
+      <div class="screen-shell screen-shell-centered fade-in">
+        <div class="screen-shell-inner screen-shell-inner-compact">
+          <div class="phase-hero screen-hero-tight">
+            <h2>Create or Join a Lobby</h2>
+            <p>Start a new room or enter a 4-letter code from a friend.</p>
+          </div>
+
+          <div class="card join-card" id="home-card">
+            <button class="btn btn-primary btn-full btn-lg" id="create-room-btn">
+              Create Lobby
+            </button>
+
+            <div class="divider" style="margin:1rem 0;"></div>
+
+            <div class="form-group">
+              <label for="room-code-input">Join Lobby Code</label>
+              <input type="text" id="room-code-input" placeholder="ABCD" maxlength="4"
+                     autocomplete="off" autocorrect="off" spellcheck="false" />
+            </div>
+            <button class="btn btn-secondary btn-full" id="join-room-btn" style="margin-top:0.75rem;">
+              Join Lobby
+            </button>
+            <p style="font-size:0.8rem;margin-top:0.75rem;text-align:center;">
+              Or open a direct link like <strong>/ABCD</strong>.
+            </p>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   const gameInProgress = currentState && currentState.phase !== 'lobby' && !currentState.myName;
   const hasDisconnected = currentState?.players?.some(p => p.disconnected);
   const prefilledName = myName.trim().toLowerCase();
@@ -14,9 +47,8 @@ function renderJoin() {
     <div class="screen-shell screen-shell-centered fade-in">
       <div class="screen-shell-inner screen-shell-inner-compact">
         <div class="phase-hero screen-hero-tight">
-          <span class="emoji-big">&#127919;</span>
-          <h1 class="gradient-text">Vibe Meter</h1>
-          <p>The party game where vibes speak louder than words.</p>
+          <h2>Join Lobby</h2>
+          <p>Enter your name to play or spectate in this room.</p>
         </div>
 
         <div class="card join-card" id="join-card">
@@ -46,6 +78,45 @@ function renderJoin() {
 }
 
 function attachJoinListeners() {
+  if (!roomCode) {
+    const createBtn = document.getElementById('create-room-btn');
+    const joinBtn = document.getElementById('join-room-btn');
+    const codeInput = document.getElementById('room-code-input');
+    if (!createBtn || !joinBtn || !codeInput) return;
+
+    codeInput.focus();
+
+    createBtn.addEventListener('click', () => {
+      createBtn.setAttribute('disabled', 'true');
+      createBtn.textContent = 'Creating...';
+      socket.emit('create-room', (resp) => {
+        const code = (resp && typeof resp.code === 'string') ? resp.code.toUpperCase() : '';
+        if (/^[A-Z]{4}$/.test(code)) {
+          window.location.assign(`/${code}`);
+          return;
+        }
+        createBtn.removeAttribute('disabled');
+        createBtn.textContent = 'Create Lobby';
+        showToast('Could not create room. Try again.', 'error');
+      });
+    });
+
+    const joinRoom = () => {
+      const code = codeInput.value.trim().toUpperCase();
+      if (!/^[A-Z]{4}$/.test(code)) {
+        return showToast('Enter a valid 4-letter code (A-Z).', 'error');
+      }
+      window.location.assign(`/${code}`);
+    };
+
+    codeInput.addEventListener('input', () => {
+      codeInput.value = codeInput.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4);
+    });
+    joinBtn.addEventListener('click', joinRoom);
+    codeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') joinRoom(); });
+    return;
+  }
+
   const input = document.getElementById('name-input');
   const btn   = document.getElementById('join-btn');
   if (!input || !btn) return;

@@ -91,9 +91,7 @@ function renderPhraseSuggestionsPanel() {
         <button class="btn btn-secondary btn-full" id="sp-submit-btn">Suggest Pair</button>
       </div>
 
-      ${suggestions.length === 0
-        ? `<p class="sp-empty">No pending suggestions yet.</p>`
-        : `<div class="sp-list">
+      ${suggestions.length === 0 ? '' : `<div class="sp-list">
             ${suggestions.map(sg => {
               const yesActive = sg.myVote === 'yes' ? 'active' : '';
               const noActive = sg.myVote === 'no' ? 'active' : '';

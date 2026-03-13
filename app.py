@@ -1,6 +1,7 @@
 import math
 import os
 import random
+import re
 import time
 from gevent import monkey
 monkey.patch_all()
@@ -17,8 +18,10 @@ _cors_env = os.environ.get('CORS_ALLOWED_ORIGINS', '').strip()
 _cors_allowed = [o.strip() for o in _cors_env.split(',') if o.strip()] if _cors_env else []
 socketio = SocketIO(app, cors_allowed_origins=_cors_allowed, async_mode='gevent')
 
-# Short, readable room codes — no visually ambiguous characters (0/O, 1/I/L)
-_ROOM_ALPHA = 'BCDFGHJKMNPQRSTVWXYZ2345679'
+# 4-letter room codes from the full alphabet (26^4 = 456,976 combinations)
+_ROOM_ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+_ROOM_CODE_LEN = 4
+_ROOM_CODE_RE = re.compile(r'^[A-Z]{4}$')
 rooms: dict[str, 'VibeMeterGame'] = {}  # room_code → game instance
 sid_to_room: dict[str, str] = {}         # socket_id → room_code
 
@@ -33,9 +36,9 @@ _MAX_PENDING_SUGGESTIONS = 30
 
 
 def _new_room_code() -> str:
-    """Generate a unique 6-character room code not already in use."""
+    """Generate a unique 4-character room code not already in use."""
     while True:
-        code = ''.join(random.choices(_ROOM_ALPHA, k=6))
+        code = ''.join(random.choices(_ROOM_ALPHA, k=_ROOM_CODE_LEN))
         if code not in rooms:
             return code
 
@@ -67,10 +70,6 @@ class Player:
 
 class ActivePlayer(Player):
     """A fully active player who can be the Vibe Man and submit guesses."""
-
-    def __init__(self, name: str, join_order: int) -> None:
-        super().__init__(name, join_order)
-        self.spectator = False
 
 
 class SpectatorPlayer(Player):
@@ -130,6 +129,9 @@ class VibeMeterGame:
         self.vibe_man_pts: int | None = None
         self.guess_deadline: int | None = None      # epoch-ms for client countdown
         self.guess_duration: int = 15              # seconds for the guess timer
+        self.round_results_deadline: int | None = None  # epoch-ms for next-round countdown
+        self.round_results_duration: float | None = None
+        self.round_results_fast: bool = False
         self.game_won: bool = False
         self.current_vibe_man_sid: str | None = None  # actual VM for the current round
 
@@ -308,7 +310,6 @@ class VibeMeterGame:
             'myId': sid,
             'myName': player.name if player else None,
             'isSpectator': is_spectator,
-            'spectatorSubmittedPhrase': sid in self.phrase_submissions,
             'isPending': sid in self.pending_players,
             'phrases': self.phrases,
             'phraseSubmissions': list(self.phrase_submissions),
@@ -335,6 +336,9 @@ class VibeMeterGame:
             'vibeManPts': self.vibe_man_pts if self.round_phase == 'round-results' else None,
             'guessDeadline': self.guess_deadline if self.round_phase == 'guessing' else None,
             'guessDuration': self.guess_duration if self.round_phase == 'guessing' else None,
+            'roundResultsDeadline': self.round_results_deadline if self.round_phase == 'round-results' else None,
+            'roundResultsDuration': self.round_results_duration if self.round_phase == 'round-results' else None,
+            'roundResultsFast': self.round_results_fast if self.round_phase == 'round-results' else False,
             'pendingPlayerIds': list(self.pending_players),
             'currentVibeManIdx': self.vibe_man_rotation_idx,
             'totalVibeManSlots': len(self.vibe_man_rotation),
@@ -376,6 +380,9 @@ class VibeMeterGame:
         self.round_results = []
         self.vibe_man_pts = None
         self.guess_deadline = None
+        self.round_results_deadline = None
+        self.round_results_duration = None
+        self.round_results_fast = False
         self.game_won = False
 
         # Nulling these tokens invalidates any background tasks from the previous round
@@ -514,14 +521,10 @@ def start_guess_timer(code: str) -> None:
     socketio.start_background_task(_run)
 
 
-def _schedule_advance(code: str) -> None:
-    game = rooms.get(code)
-    if not game:
-        return
-    token = game._advance_token
-
+def _start_advance_task(code: str, token: object, delay_seconds: float) -> None:
+    """Launch the background task that advances or ends the game after the results timer."""
     def _run() -> None:
-        socketio.sleep(10)
+        socketio.sleep(delay_seconds)
         g = rooms.get(code)
         if g is None or g._advance_token is not token:
             return
@@ -538,6 +541,17 @@ def _schedule_advance(code: str) -> None:
         broadcast(code)
 
     socketio.start_background_task(_run)
+
+
+def _schedule_advance(code: str) -> None:
+    game = rooms.get(code)
+    if not game:
+        return
+    delay_seconds = 10
+    game.round_results_duration = delay_seconds
+    game.round_results_deadline = int(time.time() * 1000 + delay_seconds * 1000)
+    game.round_results_fast = False
+    _start_advance_task(code, game._advance_token, delay_seconds)
 
 
 def resolve_and_advance(code: str) -> None:
@@ -566,11 +580,9 @@ def _cleanup_rooms() -> None:
 # ─── Routes ──────────────────────────────────────────────────────────────────
 
 @app.route('/')
-def new_room():
-    """Create a fresh room and redirect the host to its unique URL."""
-    code = _new_room_code()
-    rooms[code] = VibeMeterGame()
-    return redirect(f'/{code}')
+def home():
+    """Serve the home screen where users choose Create or Join."""
+    return send_from_directory('public', 'index.html')
 
 
 @app.route('/<path:path>')
@@ -580,10 +592,12 @@ def catch_all(path: str):
     static_path = os.path.realpath(os.path.join(public_root, path))
     if static_path.startswith(public_root + os.sep) and os.path.isfile(static_path):
         return send_from_directory('public', path)
-    # Single-segment paths are treated as room codes
+    # Single-segment 4-letter paths are treated as room codes
     if '/' not in path:
-        code = path.upper()
-        if code in rooms:
+        code = path.strip().upper()
+        if _ROOM_CODE_RE.fullmatch(code):
+            if path != code:
+                return redirect(f'/{code}')
             return send_from_directory('public', 'index.html')
     return redirect('/')
 
@@ -603,13 +617,32 @@ def set_security_headers(resp):
 @socketio.on('connect')
 def on_connect():
     sid = _sid()
-    code = request.args.get('room', '').upper()
-    if not code or code not in rooms:
-        emit('err', 'Invalid or expired room.')
+    code = request.args.get('room', '').strip().upper()
+
+    # Home-screen sockets connect without a room so users can request a new code.
+    if not code:
+        print(f'[+] Connected: {sid} (home)')
+        return
+
+    if not _ROOM_CODE_RE.fullmatch(code):
+        emit('err', 'Invalid room code.')
         return False
+
+    # Lazily create room so direct /ABCD links can bootstrap a new lobby.
+    if code not in rooms:
+        rooms[code] = VibeMeterGame()
+
     sid_to_room[sid] = code
     print(f'[+] Connected: {sid} \u2192 {code}')
     emit('state', rooms[code].build_state(sid))
+
+
+@socketio.on('create-room')
+def on_create_room():
+    """Create and reserve a new unique room code for the requester."""
+    code = _new_room_code()
+    rooms[code] = VibeMeterGame()
+    return {'code': code}
 
 
 @socketio.on('join')
@@ -843,7 +876,6 @@ def on_vote_suggested_phrase(data):
     broadcast(code)
 
 
-
 @socketio.on('select-phrase')
 def on_select_phrase(data):
     sid = _sid()
@@ -977,6 +1009,39 @@ def on_restart():
             socketio.emit('reset', to=s)
 
 
+@socketio.on('speed-up-next-round')
+def on_speed_up_next_round():
+    sid = _sid()
+    pair = _game_for(sid)
+    if not pair:
+        return
+    code, game = pair
+
+    if game.round_phase != 'round-results':
+        return
+
+    vm = game.current_vibe_man_sid or game.vibe_man_id()
+    if sid != vm:
+        return
+
+    if game.round_results_fast:
+        return
+
+    now_ms = int(time.time() * 1000)
+    deadline = game.round_results_deadline or now_ms
+    remaining_ms = max(0, deadline - now_ms)
+    # Speed up by 2x from the current moment by halving remaining time.
+    new_remaining_ms = max(1000, remaining_ms // 2)
+    new_remaining_seconds = max(1, math.ceil(new_remaining_ms / 1000))
+
+    game.round_results_fast = True
+    game.round_results_duration = new_remaining_seconds
+    game.round_results_deadline = now_ms + new_remaining_seconds * 1000
+    token = game._advance_token = object()
+    _start_advance_task(code, token, new_remaining_seconds)
+    broadcast(code)
+
+
 @socketio.on('disconnect')
 def on_disconnect():
     sid = _sid()
@@ -989,6 +1054,11 @@ def on_disconnect():
     if not pair:
         return
     code, game = pair
+
+    # Immediate cleanup: if nobody is connected to this room anymore, drop it now.
+    if code not in sid_to_room.values():
+        rooms.pop(code, None)
+        return
 
     player = game.players.get(sid)
     departed_join_order = player.join_order if player else None
@@ -1006,6 +1076,20 @@ def on_disconnect():
     player.disconnected = True
     if game.host == sid:
         game.host = game.next_host_candidate(departed_join_order)
+
+    connected_ids = [pid for pid, p in game.players.items() if not p.disconnected]
+    if len(connected_ids) == 1:
+        survivor_id = connected_ids[0]
+        survivor = game.players.get(survivor_id)
+        if survivor:
+            # Ensure the last connected player is considered active so they can be shown as winner.
+            survivor.spectator = False
+        game.host = survivor_id
+        if game.phase != 'lobby':
+            game.current_vibe_man_sid = survivor_id
+            game.end_game()
+        broadcast(code)
+        return
 
     # Demote to spectator so they leave the active rotation and appear in the spectators list
     player.spectator = True

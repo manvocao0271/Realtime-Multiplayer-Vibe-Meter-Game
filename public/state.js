@@ -2,7 +2,9 @@
 //  STATE  — shared mutable state and socket connection
 // ============================================================
 
-const roomCode = window.location.pathname.replace(/^\//, '').toUpperCase() || '';
+const ROOM_CODE_RE = /^[A-Z]{4}$/;
+const pathRoom = window.location.pathname.replace(/^\/+|\/+$/g, '').toUpperCase();
+const roomCode = ROOM_CODE_RE.test(pathRoom) ? pathRoom : '';
 const socket = io({ query: { room: roomCode } });
 
 let myName = localStorage.getItem('vibeMeterName') || '';
@@ -20,6 +22,7 @@ let lastRenderKey = null;
 
 // -- Guess countdown timer -----------------------------------
 let guessCountdownInterval = null;
+let resultsCountdownInterval = null;
 
 function startGuessCountdown() {
   clearInterval(guessCountdownInterval);
@@ -43,6 +46,36 @@ function startGuessCountdown() {
   }
   tick();
   guessCountdownInterval = setInterval(tick, 200);
+}
+
+function startResultsCountdown() {
+  clearInterval(resultsCountdownInterval);
+  resultsCountdownInterval = null;
+
+  const deadline = currentState?.roundResultsDeadline;
+  if (!deadline) return;
+
+  const bar = document.getElementById('results-timer-bar');
+  const total = Number(currentState?.roundResultsDuration || 10);
+  const remainingAtRender = Math.max(0, (deadline - Date.now()) / 1000);
+  const elapsed = Math.max(0, total - remainingAtRender);
+  if (bar) {
+    bar.style.animationDuration = `${Math.max(0.2, total)}s`;
+    bar.style.animationDelay = `-${elapsed}s`;
+  }
+
+  function tick() {
+    const secs = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+    const el = document.getElementById('results-next-round-secs');
+    if (el) el.textContent = secs === 1 ? '1 second' : `${secs} seconds`;
+    if (secs === 0) {
+      clearInterval(resultsCountdownInterval);
+      resultsCountdownInterval = null;
+    }
+  }
+
+  tick();
+  resultsCountdownInterval = setInterval(tick, 200);
 }
 
 // -- Tip deck (shuffled, one tip per round) ------------------

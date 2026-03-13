@@ -24,17 +24,21 @@ socket.on('reset', () => {
 
 socket.on('disconnect', () => {
   showToast('Disconnected from server.', 'error');
+  render();
+});
+
+socket.on('connect_error', () => {
+  // Keep UI usable even if the socket handshake is delayed/retried.
+  render();
 });
 
 // -- Render Entry Point --------------------------------------
 function render() {
   const appWrapper = document.getElementById('app-wrapper');
   const app        = document.getElementById('app');
-  const meta       = document.getElementById('header-meta');
   const sidebar    = document.getElementById('leaderboard-sidebar');
 
   if (!currentState || !currentState.myName) {
-    meta.innerHTML = '';
     appWrapper.classList.remove('with-sidebar');
     sidebar.innerHTML = '';
     app.innerHTML = renderJoin();
@@ -50,11 +54,6 @@ function render() {
     appWrapper.classList.remove('with-sidebar');
     sidebar.innerHTML = '';
   }
-
-  meta.innerHTML = `
-    <span class="player-badge">${esc(currentState.myName)}</span>
-    ${currentState.isSpectator ? '<span class="badge badge-yellow" style="font-size:0.75rem;">Spectating</span>' : ''}
-  `;
 
   switch (currentState.phase) {
     case 'lobby':
@@ -116,6 +115,9 @@ function render() {
   }
 }
 
+// Initial paint: do not leave the static "Connecting..." placeholder on root URL.
+render();
+
 // -- Playing Phase Dispatcher --------------------------------
 function renderPlaying(app) {
   const s = currentState;
@@ -129,6 +131,7 @@ function renderPlaying(app) {
       case 'round-results':
         app.innerHTML = renderResults();
         attachResultsListeners();
+        startResultsCountdown();
         break;
       default:
         app.innerHTML = renderSpectator();
@@ -156,6 +159,7 @@ function renderPlaying(app) {
     case 'round-results':
       app.innerHTML = renderResults();
       attachResultsListeners();
+      startResultsCountdown();
       break;
     default:
       app.innerHTML = '<div class="connecting-screen"><div class="spinner"></div></div>';
