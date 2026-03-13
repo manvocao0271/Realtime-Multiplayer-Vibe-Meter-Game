@@ -123,6 +123,11 @@ class VibeMeterGame:
         # Late-joiners approved for next round
         self.pending_players: set[str] = set()
 
+        # Phrase suggestions proposed during results and voted on by all connected players.
+        # Each item: {id, byId, byName, label1, label2, votes:{sid:'yes'|'no'}}
+        self.pending_phrase_suggestions: list[dict] = []
+        self.next_phrase_suggestion_id: int = 1
+
         # Token objects used to cancel stale background tasks without threading primitives.
         # A task checks "game._some_token is captured_token" before acting; replacing or
         # nulling the token here is sufficient to prevent stale execution.
@@ -149,6 +154,82 @@ class VibeMeterGame:
         if self.vibe_man_rotation:
             return self.vibe_man_rotation[self.vibe_man_rotation_idx]
         return None
+
+    def eligible_voter_ids(self) -> list[str]:
+        """All non-disconnected players (active + spectator) can vote."""
+        return [sid for sid, p in self.players.items() if not p.disconnected]
+
+    def phrase_suggestions_for(self, sid: str) -> list[dict]:
+        eligible = set(self.eligible_voter_ids())
+        total_voters = len(eligible)
+        items = []
+        for sug in self.pending_phrase_suggestions:
+            votes = sug.get('votes', {})
+            yes_votes = sum(1 for pid, v in votes.items() if pid in eligible and v == 'yes')
+            no_votes = sum(1 for pid, v in votes.items() if pid in eligible and v == 'no')
+            items.append({
+                'id': sug['id'],
+                'byId': sug['byId'],
+                'byName': sug['byName'],
+                'label1': sug['label1'],
+                'label2': sug['label2'],
+                'yesVotes': yes_votes,
+                'noVotes': no_votes,
+                'totalVoters': total_voters,
+                'myVote': votes.get(sid),
+            })
+        return items
+
+    def resolve_phrase_suggestions(self) -> None:
+        """Resolve suggestions at end of results timer.
+
+        Rules:
+        - yes >= half of eligible voters -> add phrase and remove suggestion
+        - no >= half of eligible voters -> remove suggestion
+        - tie (yes == no) -> keep suggestion and keep votes
+        - otherwise -> keep suggestion and keep votes
+        """
+        eligible = set(self.eligible_voter_ids())
+        n = len(eligible)
+        if n <= 0 or not self.pending_phrase_suggestions:
+            return
+
+        half = n / 2.0
+        survivors: list[dict] = []
+
+        existing_pairs = {
+            (ph.get('label1', '').strip().lower(), ph.get('label2', '').strip().lower())
+            for ph in self.phrases
+        }
+
+        for sug in self.pending_phrase_suggestions:
+            votes = sug.get('votes', {})
+            yes_votes = sum(1 for pid, v in votes.items() if pid in eligible and v == 'yes')
+            no_votes = sum(1 for pid, v in votes.items() if pid in eligible and v == 'no')
+
+            if yes_votes == no_votes:
+                survivors.append(sug)
+                continue
+
+            if yes_votes >= half:
+                pair = (sug['label1'].strip().lower(), sug['label2'].strip().lower())
+                if pair not in existing_pairs:
+                    self.phrases.append({
+                        'id': len(self.phrases),
+                        'byId': sug['byId'],
+                        'byName': sug['byName'],
+                        'label1': sug['label1'],
+                        'label2': sug['label2'],
+                    })
+                    existing_pairs.add(pair)
+                continue
+
+            if no_votes >= half:
+                continue
+
+            survivors.append(sug)
+
+        self.pending_phrase_suggestions = survivors
 
     def get_available_phrases(self, sid: str) -> list[dict]:
         """Return phrases the given Vibe Man can still pick; resets if all used."""
@@ -229,6 +310,7 @@ class VibeMeterGame:
             'pendingPlayerIds': list(self.pending_players),
             'currentVibeManIdx': self.vibe_man_rotation_idx,
             'totalVibeManSlots': len(self.vibe_man_rotation),
+            'phraseSuggestions': self.phrase_suggestions_for(sid),
         }
 
     # ── Phase Transitions ────────────────────────────────────────────────────
@@ -397,12 +479,13 @@ def _schedule_advance(code: str) -> None:
     token = game._advance_token
 
     def _run() -> None:
-        socketio.sleep(5)
+        socketio.sleep(10)
         g = rooms.get(code)
         if g is None or g._advance_token is not token:
             return
         if g.round_phase != 'round-results':
             return
+        g.resolve_phrase_suggestions()
         if g.game_won:
             g.end_game()
         else:
@@ -519,6 +602,12 @@ def on_join(data):
         if old_id in game.pending_players:
             game.pending_players.discard(old_id)
             game.pending_players.add(sid)
+        for sug in game.pending_phrase_suggestions:
+            if sug.get('byId') == old_id:
+                sug['byId'] = sid
+            votes = sug.get('votes', {})
+            if old_id in votes:
+                votes[sid] = votes.pop(old_id)
 
         broadcast(code)
         return
@@ -611,6 +700,88 @@ def on_join_next_round():
         return
     game.pending_players.add(sid)
     broadcast(code)
+
+
+@socketio.on('suggest-phrase')
+def on_suggest_phrase(data):
+    sid = _sid()
+    pair = _game_for(sid)
+    if not pair:
+        return
+    code, game = pair
+
+    if game.phase != 'playing':
+        return
+
+    player = game.players.get(sid)
+    if not player or player.disconnected:
+        return
+
+    data = data or {}
+    label1 = (data.get('label1') or '').strip()[:20]
+    label2 = (data.get('label2') or '').strip()[:20]
+    if not label1 or not label2:
+        return emit('err', 'Both opposite phrases are required.')
+    if label1.lower() == label2.lower():
+        return emit('err', 'Phrases must be different.')
+
+    # Prevent exact duplicates against existing and pending pairs
+    pair_key = (label1.lower(), label2.lower())
+    reverse_key = (label2.lower(), label1.lower())
+    existing = {
+        (ph.get('label1', '').strip().lower(), ph.get('label2', '').strip().lower())
+        for ph in game.phrases
+    }
+    pending = {
+        (s.get('label1', '').strip().lower(), s.get('label2', '').strip().lower())
+        for s in game.pending_phrase_suggestions
+    }
+    if pair_key in existing or reverse_key in existing or pair_key in pending or reverse_key in pending:
+        return emit('err', 'That phrase pair already exists.')
+
+    game.pending_phrase_suggestions.append({
+        'id': game.next_phrase_suggestion_id,
+        'byId': sid,
+        'byName': player.name,
+        'label1': label1,
+        'label2': label2,
+        'votes': {},
+    })
+    game.next_phrase_suggestion_id += 1
+    broadcast(code)
+
+
+@socketio.on('vote-suggested-phrase')
+def on_vote_suggested_phrase(data):
+    sid = _sid()
+    pair = _game_for(sid)
+    if not pair:
+        return
+    code, game = pair
+
+    if game.phase != 'playing':
+        return
+
+    player = game.players.get(sid)
+    if not player or player.disconnected:
+        return
+
+    data = data or {}
+    try:
+        suggestion_id = int(data.get('suggestionId', -1))
+    except (TypeError, ValueError):
+        return
+    vote = (data.get('vote') or '').strip().lower()
+    if vote not in ('yes', 'no'):
+        return
+
+    suggestion = next((s for s in game.pending_phrase_suggestions if s.get('id') == suggestion_id), None)
+    if not suggestion:
+        return
+
+    suggestion.setdefault('votes', {})[sid] = vote
+    broadcast(code)
+
 
 
 @socketio.on('select-phrase')
