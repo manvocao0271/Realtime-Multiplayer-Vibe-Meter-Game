@@ -37,14 +37,12 @@ function renderLeaderboard() {
       const bulls = p.bullseyes || 0;
       const delta = deltaMap[p.id];
       return `
-        <div class="lb-entry">
-          <span class="lb-streak-col">${bulls > 0 ? `${bulls}x&#127919;` : ''}</span>
-          <div class="lb-row ${isYou ? 'lb-you' : ''} ${p.disconnected ? 'lb-disconnected' : ''}">
-            <span class="lb-medal">${medal}</span>
-            <span class="lb-pname">${esc(p.name)}${p.disconnected ? ' <span class="lb-away">(away)</span>' : ''}</span>
-            <span class="lb-pts">${p.score}</span>
-          </div>
-          <span class="lb-delta-col">${delta != null && delta > 0 ? `+${delta}` : ''}</span>
+        <div class="lb-row ${isYou ? 'lb-you' : ''} ${p.disconnected ? 'lb-disconnected' : ''}">
+          <span class="lb-streak-inline">${bulls > 0 ? `${bulls}x&#127919;` : ''}</span>
+          <span class="lb-medal">${medal}</span>
+          <span class="lb-pname">${esc(p.name)}${p.disconnected ? ' <span class="lb-away">(away)</span>' : ''}</span>
+          <span class="lb-pts">${p.score}</span>
+          <span class="lb-delta-inline">${delta != null && delta > 0 ? `+${delta}` : ''}</span>
         </div>
       `;
     }).join('');
@@ -73,5 +71,76 @@ function renderLeaderboard() {
         }).join('')}
       </div>
     ` : ''}
+    ${renderPhraseSuggestionsPanel()}
   `;
+}
+
+function renderPhraseSuggestionsPanel() {
+  const s = currentState;
+  if (!s || s.phase !== 'playing') return '';
+
+  const suggestions = s.phraseSuggestions || [];
+
+  return `
+    <div class="sp-panel">
+      <div class="sp-title">Next-Round Phrase Suggestions</div>
+
+      <div class="sp-form">
+        <input type="text" id="sp-label1" maxlength="20" placeholder="Left phrase" />
+        <input type="text" id="sp-label2" maxlength="20" placeholder="Right phrase" />
+        <button class="btn btn-secondary btn-full" id="sp-submit-btn">Suggest Pair</button>
+      </div>
+
+      ${suggestions.length === 0
+        ? `<p class="sp-empty">No pending suggestions yet.</p>`
+        : `<div class="sp-list">
+            ${suggestions.map(sg => {
+              const yesActive = sg.myVote === 'yes' ? 'active' : '';
+              const noActive = sg.myVote === 'no' ? 'active' : '';
+              return `
+                <div class="sp-item">
+                  <div class="sp-pair">
+                    <span class="sp-label-1">${esc(sg.label1)}</span>
+                    <span class="sp-vs">vs</span>
+                    <span class="sp-label-2">${esc(sg.label2)}</span>
+                  </div>
+                  <div class="sp-meta">by ${esc(sg.byName)} • ✓ ${sg.yesVotes} • ✗ ${sg.noVotes} • voters ${sg.totalVoters}</div>
+                  <div class="sp-votes">
+                    <button class="btn sp-vote-btn yes ${yesActive}" data-suggestion-id="${sg.id}" data-vote="yes">✓</button>
+                    <button class="btn sp-vote-btn no ${noActive}" data-suggestion-id="${sg.id}" data-vote="no">✗</button>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>`
+      }
+    </div>
+  `;
+}
+
+function attachSidebarListeners() {
+  const s = currentState;
+  if (!s || s.phase !== 'playing') return;
+
+  const label1 = document.getElementById('sp-label1');
+  const label2 = document.getElementById('sp-label2');
+  const submit = document.getElementById('sp-submit-btn');
+
+  submit?.addEventListener('click', () => {
+    const l1 = (label1?.value || '').trim().slice(0, 20);
+    const l2 = (label2?.value || '').trim().slice(0, 20);
+    if (!l1 || !l2) return showToast('Enter both opposite phrases.', 'error');
+    socket.emit('suggest-phrase', { label1: l1, label2: l2 });
+    if (label1) label1.value = '';
+    if (label2) label2.value = '';
+  });
+
+  document.querySelectorAll('.sp-vote-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const suggestionId = Number(btn.dataset.suggestionId);
+      const vote = btn.dataset.vote;
+      if (!suggestionId || (vote !== 'yes' && vote !== 'no')) return;
+      socket.emit('vote-suggested-phrase', { suggestionId, vote });
+    });
+  });
 }

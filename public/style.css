@@ -237,6 +237,26 @@ p  { color: var(--text-muted); }
   flex-shrink: 0;
 }
 
+.lb-streak-inline {
+  width: 2.2rem;
+  text-align: right;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #fbbf24;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.lb-delta-inline {
+  min-width: 1.8rem;
+  text-align: right;
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: #a78bfa;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .lb-spectators {
   margin-top: 0.75rem;
   padding-top: 0.6rem;
@@ -329,6 +349,109 @@ p  { color: var(--text-muted); }
 .lb-tie-group .lb-entry:not(:first-child) .lb-row {
   border-top-left-radius: 0;
   border-top-right-radius: 0;
+}
+
+/* ── Results Phrase Suggestions (Sidebar) ─────────────────── */
+.sp-panel {
+  width: 100%;
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.sp-title {
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  margin-bottom: 0.5rem;
+}
+
+.sp-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 0.65rem;
+}
+
+.sp-form input {
+  width: 100%;
+  background: var(--card-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 0.78rem;
+  padding: 0.38rem 0.5rem;
+}
+
+.sp-empty {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.sp-note {
+  margin: 0 0 0.55rem;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+}
+
+.sp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.sp-item {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.45rem 0.5rem;
+}
+
+.sp-pair {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+
+.sp-vs { color: var(--text-dim); font-size: 0.72rem; }
+
+.sp-meta {
+  margin-top: 0.2rem;
+  font-size: 0.68rem;
+  color: var(--text-dim);
+}
+
+.sp-votes {
+  margin-top: 0.35rem;
+  display: flex;
+  gap: 0.35rem;
+}
+
+.sp-vote-btn {
+  flex: 1;
+  padding: 0.25rem 0.45rem;
+  font-size: 0.82rem;
+  border: 1px solid var(--border);
+  background: var(--card-2);
+}
+
+.sp-vote-btn.yes.active {
+  border-color: rgba(16,185,129,0.65);
+  background: rgba(16,185,129,0.2);
+  color: #6ee7b7;
+}
+
+.sp-vote-btn.no.active {
+  border-color: rgba(239,68,68,0.65);
+  background: rgba(239,68,68,0.2);
+  color: #fca5a5;
 }
 
 @media (max-width: 860px) {

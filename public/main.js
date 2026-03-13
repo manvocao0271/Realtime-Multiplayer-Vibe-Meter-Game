@@ -43,6 +43,7 @@ function render() {
   if (currentState.phase === 'playing') {
     appWrapper.classList.add('with-sidebar');
     document.getElementById('leaderboard-sidebar').innerHTML = renderLeaderboard();
+    attachSidebarListeners();
   } else {
     appWrapper.classList.remove('with-sidebar');
   }
