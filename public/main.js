@@ -12,7 +12,7 @@ socket.on('state', (s) => {
 
 socket.on('err', (msg) => showToast(msg, 'error'));
 
-// Live drag positions pushed only to the Vibe Man -- patch mini-dials in-place
+// Live drag positions pushed to observers -- patch mini-dials in-place
 socket.on('live-positions', (players) => {
   players.forEach(p => updateMiniDial(p.id, p.value, p.submitted));
 });
@@ -82,18 +82,18 @@ function render() {
       // Avoid destroying mini-dial DOM while live positions are streaming in.
       const s = currentState;
       let playKey = null;
-      if (!s.isSpectator) {
-        if (s.roundPhase === 'vibe-writing' && !s.isVibeman) {
-          playKey = 'playing:vibe-writing';
-        } else if (s.roundPhase === 'guessing') {
-          playKey = s.isVibeman
-            ? `playing:guessing:vibe-man:${s.totalGuessers}`
-            : `playing:guessing:${s.hasSubmittedGuess ? 'post' : 'pre'}`;
-        }
+      if (s.roundPhase === 'vibe-writing' && !s.isVibeman && !s.isSpectator) {
+        playKey = 'playing:vibe-writing';
+      } else if (s.roundPhase === 'guessing') {
+        playKey = (s.isVibeman || s.isSpectator)
+          ? `playing:guessing:observer:${s.totalGuessers}`
+          : `playing:guessing:${s.hasSubmittedGuess ? 'post' : 'pre'}`;
+      } else if (s.roundPhase === 'round-results' && s.isSpectator) {
+        playKey = 'playing:round-results:spectator';
       }
       if (playKey && lastRenderKey === playKey) {
         if (s.roundPhase === 'guessing') {
-          s.isVibeman ? patchVibeManWaiting() : patchGuesserGuessing();
+          (s.isVibeman || s.isSpectator) ? patchVibeManWaiting() : patchGuesserGuessing();
         }
         // vibe-writing: static screen, skip re-render
       } else {
@@ -117,8 +117,20 @@ function renderPlaying(app) {
   const s = currentState;
 
   if (s.isSpectator) {
-    app.innerHTML = renderSpectator();
-    attachSpectatorListeners();
+    switch (s.roundPhase) {
+      case 'guessing':
+        app.innerHTML = renderVibeManWaiting();
+        startGuessCountdown();
+        break;
+      case 'round-results':
+        app.innerHTML = renderResults();
+        attachResultsListeners();
+        break;
+      default:
+        app.innerHTML = renderSpectator();
+        attachSpectatorListeners();
+        break;
+    }
     return;
   }
 

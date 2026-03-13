@@ -102,7 +102,7 @@ function renderGuessing() {
 
   const dialSVG = `
     <div class="dial-wrap" style="margin:0.5rem 0 0;">
-      <svg class="dial-svg" id="dial-svg" viewBox="0 0 300 170" xmlns="http://www.w3.org/2000/svg"${isWaiting ? '' : ' style="cursor:grab;"'}>
+      <svg class="dial-svg" id="dial-svg" viewBox="0 0 300 200" xmlns="http://www.w3.org/2000/svg"${isWaiting ? '' : ' style="cursor:grab;"'}>
         <defs>
           <linearGradient id="dialGrad" x1="0%" y1="0%" x2="100%" y2="0%">
             <stop offset="0%"   stop-color="#10b981" />
