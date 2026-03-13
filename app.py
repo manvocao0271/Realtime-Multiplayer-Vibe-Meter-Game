@@ -11,12 +11,25 @@ from flask_socketio import SocketIO, emit
 # ─── Flask & SocketIO setup ───────────────────────────────────────────────────
 
 app = Flask(__name__)
-socketio = SocketIO(app, cors_allowed_origins='*', async_mode='gevent')
+# Default to same-origin WebSocket policy. To allow explicit cross-origin clients,
+# set CORS_ALLOWED_ORIGINS as a comma-separated list.
+_cors_env = os.environ.get('CORS_ALLOWED_ORIGINS', '').strip()
+_cors_allowed = [o.strip() for o in _cors_env.split(',') if o.strip()] if _cors_env else []
+socketio = SocketIO(app, cors_allowed_origins=_cors_allowed, async_mode='gevent')
 
 # Short, readable room codes — no visually ambiguous characters (0/O, 1/I/L)
 _ROOM_ALPHA = 'BCDFGHJKMNPQRSTVWXYZ2345679'
 rooms: dict[str, 'VibeMeterGame'] = {}  # room_code → game instance
 sid_to_room: dict[str, str] = {}         # socket_id → room_code
+
+# Basic server-side abuse controls
+_event_last_ts: dict[tuple[str, str], float] = {}
+_MIN_EVENT_GAP = {
+    'live-pos': 0.02,               # allow high-frequency dial streaming, but bounded
+    'suggest-phrase': 0.5,
+    'vote-suggested-phrase': 0.08,
+}
+_MAX_PENDING_SUGGESTIONS = 30
 
 
 def _new_room_code() -> str:
@@ -449,6 +462,20 @@ def _sid() -> str:
     return request.sid  # type: ignore[attr-defined]
 
 
+def _allow_event(sid: str, event: str) -> bool:
+    """Simple in-memory per-sid throttle to reduce event spam/DoS impact."""
+    gap = _MIN_EVENT_GAP.get(event)
+    if not gap:
+        return True
+    now = time.monotonic()
+    key = (sid, event)
+    prev = _event_last_ts.get(key)
+    if prev is not None and now - prev < gap:
+        return False
+    _event_last_ts[key] = now
+    return True
+
+
 # ─── Background Task Helpers ──────────────────────────────────────────────────
 
 def start_guess_timer(code: str) -> None:
@@ -534,8 +561,9 @@ def new_room():
 @app.route('/<path:path>')
 def catch_all(path: str):
     # Serve files that exist in public/ (CSS, JS, images, etc.)
-    static_path = os.path.join(app.root_path, 'public', path)
-    if os.path.isfile(static_path):
+    public_root = os.path.realpath(os.path.join(app.root_path, 'public'))
+    static_path = os.path.realpath(os.path.join(public_root, path))
+    if static_path.startswith(public_root + os.sep) and os.path.isfile(static_path):
         return send_from_directory('public', path)
     # Single-segment paths are treated as room codes
     if '/' not in path:
@@ -543,6 +571,16 @@ def catch_all(path: str):
         if code in rooms:
             return send_from_directory('public', 'index.html')
     return redirect('/')
+
+
+@app.after_request
+def set_security_headers(resp):
+    # Defense-in-depth browser hardening headers.
+    resp.headers.setdefault('X-Content-Type-Options', 'nosniff')
+    resp.headers.setdefault('X-Frame-Options', 'DENY')
+    resp.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+    resp.headers.setdefault('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+    return resp
 
 
 # ─── Socket Events ────────────────────────────────────────────────────────────
@@ -705,6 +743,8 @@ def on_join_next_round():
 @socketio.on('suggest-phrase')
 def on_suggest_phrase(data):
     sid = _sid()
+    if not _allow_event(sid, 'suggest-phrase'):
+        return
     pair = _game_for(sid)
     if not pair:
         return
@@ -716,6 +756,9 @@ def on_suggest_phrase(data):
     player = game.players.get(sid)
     if not player or player.disconnected:
         return
+
+    if len(game.pending_phrase_suggestions) >= _MAX_PENDING_SUGGESTIONS:
+        return emit('err', 'Too many pending suggestions. Vote on existing ones first.')
 
     data = data or {}
     label1 = (data.get('label1') or '').strip()[:20]
@@ -754,6 +797,8 @@ def on_suggest_phrase(data):
 @socketio.on('vote-suggested-phrase')
 def on_vote_suggested_phrase(data):
     sid = _sid()
+    if not _allow_event(sid, 'vote-suggested-phrase'):
+        return
     pair = _game_for(sid)
     if not pair:
         return
@@ -842,6 +887,8 @@ def on_story(data):
 @socketio.on('live-pos')
 def on_live_pos(data):
     sid = _sid()
+    if not _allow_event(sid, 'live-pos'):
+        return
     pair = _game_for(sid)
     if not pair:
         return
@@ -920,6 +967,8 @@ def on_disconnect():
     sid = _sid()
     pair = _game_for(sid)
     sid_to_room.pop(sid, None)
+    for key in [k for k in _event_last_ts if k[0] == sid]:
+        _event_last_ts.pop(key, None)
     print(f'[-] Disconnected: {sid}')
 
     if not pair:

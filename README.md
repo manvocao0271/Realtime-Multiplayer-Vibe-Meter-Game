@@ -38,7 +38,14 @@ Rounds rotate until a player reaches the points goal:
    - True value **outside the zone** → **0 pts**, regardless of proximity
 
 6. Results show every player's guess overlaid on the spectrum dial. The leaderboard updates with points earned this round.
-7. Play continues, rotating the Vibe Man, until a player hits the goal.
+7. **Phrase suggestion voting (all playing phases):**
+         - Any connected player can suggest a new opposite phrase pair (left vs right).
+         - Any connected player can vote each pending suggestion with **✓** (add) or **✗** (reject) at any time while the game is in `playing`.
+         - Final decisions are only resolved at the **end of each round-results timer**:
+                 - ✓ votes >= half of connected players -> phrase is added for next round.
+                 - ✗ votes >= half of connected players -> phrase is rejected.
+                 - Tie (✓ == ✗) -> phrase stays pending, and all existing votes persist into later rounds.
+8. Play continues, rotating the Vibe Man, until a player hits the goal.
 
 ---
 
@@ -209,6 +216,7 @@ Each branch shows the same **tip card** (`_currentRoundTip`) — one tip is pick
 | **Phrase-select screen** | Vibe Man picks which submitted phrase to use each round; the server tracks which phrases they've used recently and auto-resets when all are exhausted |
 | **Scaled guess timer** | Timer runs 15–30 s depending on story length (characters excl. spaces, capped at +15 s); countdown bar and live second-ticker; round auto-resolves on expiry |
 | **Live drag positions** | While guessing, each player's dial position is streamed to the server (throttled ~25 fps) and forwarded to the current Vibe Man **and any guesser who has already submitted** as a mini-dial dashboard |
+| **Observer visibility** | Spectators can watch the same live mini-dial board during guessing and see the full round-results view |
 | **Tip system** | One tip from a shuffled deck is shown per round across all three guessing states; tips cover scoring brackets, extreme-zone rules, and strategy hints |
 | **Vibe Man scoring** | After each round the Vibe Man earns ⌈average guessers' score⌉, incentivising clear writing |
 | **Bullseye tracker** | Scores ≤ 5 away are counted separately per player and displayed with 🎯 in the leaderboard sidebar |
@@ -218,7 +226,8 @@ Each branch shows the same **tip card** (`_currentRoundTip`) — one tip is pick
 | **In-place DOM patching** | The phrase-input and guessing screens patch counters and mini-dials without replacing interactive elements, preventing flicker |
 | **Multi-room support** | Each visiting browser automatically gets its own isolated room; stale rooms with no active connections are cleaned up automatically |
 | **Name persistence** | Player name is saved to `localStorage` and pre-filled on re-open; capped at 10 characters |
-| **Results visualisation** | After each round, a unified card shows the dial with every guess overlaid plus the vibe story; the leaderboard sidebar updates live |
+| **Results visualisation** | After each round, a unified card shows the dial with every guess overlaid plus the vibe story; direct hits are highlighted in magenta and the leaderboard sidebar updates live |
+| **Phrase suggestion voting** | Right sidebar includes a persistent suggestion panel during all `playing` phases with per-suggestion ✓ / ✗ voting; decisions are resolved only when each round-results timer ends |
 | **Restart flow** | Host can restart from the game-over screen; all clients reset via a `reset` Socket.IO event |
 | **XSS prevention** | All user-supplied strings are HTML-escaped via a dedicated `esc()` helper before injection into the DOM |
 | **Toast notifications** | Non-blocking error / info toasts with auto-dismiss and slide-out animation |
