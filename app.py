@@ -163,6 +163,21 @@ class VibeMeterGame:
             key=lambda d: d['joinOrder'],
         )
 
+    def next_host_candidate(self, departed_join_order: int | None = None) -> str | None:
+        """Pick the next connected player by join order, wrapping around if needed."""
+        connected = sorted(
+            ((sid, p) for sid, p in self.players.items() if not p.disconnected),
+            key=lambda item: item[1].join_order,
+        )
+        if not connected:
+            return None
+        if departed_join_order is None:
+            return connected[0][0]
+        for sid, player in connected:
+            if player.join_order > departed_join_order:
+                return sid
+        return connected[0][0]
+
     def vibe_man_id(self) -> str | None:
         if self.vibe_man_rotation:
             return self.vibe_man_rotation[self.vibe_man_rotation_idx]
@@ -976,12 +991,12 @@ def on_disconnect():
     code, game = pair
 
     player = game.players.get(sid)
+    departed_join_order = player.join_order if player else None
 
     if game.phase == 'lobby':
         game.players.pop(sid, None)
         if game.host == sid:
-            sp = game.sorted_players()
-            game.host = sp[0]['id'] if sp else None
+            game.host = game.next_host_candidate(departed_join_order)
         broadcast(code)
         return
 
@@ -989,6 +1004,9 @@ def on_disconnect():
         return
 
     player.disconnected = True
+    if game.host == sid:
+        game.host = game.next_host_candidate(departed_join_order)
+
     # Demote to spectator so they leave the active rotation and appear in the spectators list
     player.spectator = True
     game.pending_players.discard(sid)

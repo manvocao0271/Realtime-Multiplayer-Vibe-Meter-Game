@@ -127,12 +127,12 @@ function renderGuessing() {
     return `
       <div class="fade-in">
         ${renderVibeManBanner(s)}
-        <div class="card" style="text-align:center;padding:2rem;">
-          <div style="font-size:3rem;margin-bottom:0.75rem;">&#128161;</div>
-          <h3><span class="waiting-pulse"></span> ${esc(s.vibeManName)} is writing their story...</h3>
-        </div>
         ${_tipHTML(_currentRoundTip)}
-        <div class="card" style="margin-top:1rem;">${dialSVG}</div>
+        <div class="card" style="margin-top:1rem;text-align:center;padding:1.75rem 1.5rem 1.25rem;">
+          <div style="font-size:3rem;margin-bottom:0.5rem;">&#128161;</div>
+          <h3 style="margin-bottom:1rem;"><span class="waiting-pulse"></span> ${esc(s.vibeManName)} is writing their story...</h3>
+          ${dialSVG}
+        </div>
       </div>`;
   }
 
@@ -198,7 +198,7 @@ function renderGuessing() {
           Lock In My Guess
         </button>
       </div>
-      <div class="callout callout-info" style="text-align:center;padding:0.85rem 1rem;margin-bottom:1rem;">
+      <div class="callout callout-info" style="text-align:center;padding:0.85rem 1rem;margin-top:1rem;margin-bottom:1rem;">
         <p id="guess-timer-secs" style="font-size:0.9rem;margin-bottom:0.6rem;">15 seconds...</p>
         <div class="countdown-bar-wrap">
           <div class="countdown-bar-15" id="guess-timer-bar"></div>

@@ -2,6 +2,57 @@
 //  SCREEN: Phrase Input
 // ============================================================
 
+function renderPhraseInputDialForm() {
+  const dialTicks = Array.from({ length: 11 }, (_, i) => {
+    const angle = Math.PI - (i / 10) * Math.PI;
+    const r1 = 116, r2 = 144, cx = 150, cy = 150;
+    const x1 = cx + r1 * Math.cos(angle);
+    const y1 = cy - r1 * Math.sin(angle);
+    const x2 = cx + r2 * Math.cos(angle);
+    const y2 = cy - r2 * Math.sin(angle);
+    return `<line class="dial-tick${i === 0 || i === 10 ? ' dial-tick-end' : ''}" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" />`;
+  }).join('');
+
+  return `
+    <div class="card highlight fade-in phrase-input-card">
+      <div class="phrase-dial-shell">
+        <div class="dial-wrap phrase-dial-wrap">
+          <svg class="dial-svg phrase-dial-svg" viewBox="0 0 300 200" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <defs>
+              <linearGradient id="phraseInputDialGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#10b981" />
+                <stop offset="50%" stop-color="#a855f7" />
+                <stop offset="100%" stop-color="#ef4444" />
+              </linearGradient>
+            </defs>
+            <path class="dial-track" d="M 20,150 A 130,130 0 0,1 280,150" />
+            <path class="dial-fill phrase-dial-fill" d="M 20,150 A 130,130 0 0,1 280,150"
+              style="stroke-dasharray:408.41;stroke-dashoffset:0;stroke:url(#phraseInputDialGrad);" />
+            ${dialTicks}
+            <circle class="phrase-dial-endpoint phrase-dial-endpoint-left" cx="20" cy="150" r="8" />
+            <circle class="phrase-dial-endpoint phrase-dial-endpoint-right" cx="280" cy="150" r="8" />
+          </svg>
+
+          <div class="phrase-dial-inputs">
+            <div class="phrase-dial-input-group phrase-dial-input-left">
+              <input type="text" id="label1-input" placeholder='"green flag"'
+                     maxlength="20" value="${esc(saved.label1)}" autocomplete="off" aria-label="Left phrase input" />
+            </div>
+            <div class="phrase-dial-input-group phrase-dial-input-right">
+              <input type="text" id="label2-input" placeholder='"red flag"'
+                     maxlength="20" value="${esc(saved.label2)}" autocomplete="off" aria-label="Right phrase input" />
+            </div>
+          </div>
+        </div>
+
+        <button class="btn btn-primary btn-full" id="phrase-submit-btn">
+          Submit Phrases
+        </button>
+      </div>
+    </div>
+  `;
+}
+
 function renderPhraseInput() {
   const s = currentState;
   const activePl = (s.players || []).filter(p => !p.spectator);
@@ -14,7 +65,7 @@ function renderPhraseInput() {
     <div class="phase-hero">
       <span class="emoji-big">&#9997;</span>
       <h2>Enter Your Two Phrases</h2>
-      <p>Think of two polar-opposite words or phrases (e.g. <em>"green flag"</em> vs <em>"red flag"</em>).</p>
+      <p>Think of two fun polar-opposite words or phrases that have a wide range.</p>
     </div>
 
     ${s.hasSubmittedPhrase ? `
@@ -27,23 +78,7 @@ function renderPhraseInput() {
         </div>
       </div>
     ` : `
-      <div class="card fade-in">
-        <div class="stack">
-          <div class="form-group">
-            <label for="label1-input">Phrase 1 &mdash; the 1 end</label>
-            <input type="text" id="label1-input" placeholder='e.g. "green flag"'
-                   maxlength="20" value="${esc(saved.label1)}" autocomplete="off" />
-          </div>
-          <div class="form-group">
-            <label for="label2-input">Phrase 2 &mdash; the 100 end</label>
-            <input type="text" id="label2-input" placeholder='e.g. "red flag"'
-                   maxlength="20" value="${esc(saved.label2)}" autocomplete="off" />
-          </div>
-          <button class="btn btn-primary btn-full" id="phrase-submit-btn">
-            Submit Phrases
-          </button>
-        </div>
-      </div>
+      ${renderPhraseInputDialForm()}
     `}
 
     <div class="card" style="margin-top:1.5rem;">
