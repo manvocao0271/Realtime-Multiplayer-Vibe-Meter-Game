@@ -442,6 +442,14 @@ p  { color: var(--text-muted); }
   background: var(--card-2);
 }
 
+.sp-vote-btn.yes {
+  color: #34d399;
+}
+
+.sp-vote-btn.no {
+  color: #f87171;
+}
+
 .sp-vote-btn.yes.active {
   border-color: rgba(16,185,129,0.65);
   background: rgba(16,185,129,0.2);
