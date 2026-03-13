@@ -92,14 +92,6 @@ function renderGuessing() {
   const label2 = esc((s.currentPhrase?.label2 || '').slice(0, 20));
   const v = saved.guessValue;
 
-  const dialTicks = Array.from({length: 11}, (_, i) => {
-    const angle = Math.PI - (i / 10) * Math.PI;
-    const r1 = 116, r2 = 144, cx = 150, cy = 150;
-    const x1 = cx + r1 * Math.cos(angle); const y1 = cy - r1 * Math.sin(angle);
-    const x2 = cx + r2 * Math.cos(angle); const y2 = cy - r2 * Math.sin(angle);
-    return `<line class="dial-tick${i === 0 || i === 10 ? ' dial-tick-end' : ''}" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" />`;
-  }).join('');
-
   const dialSVG = `
     <div class="dial-wrap" style="margin:0.5rem 0 0;">
       <svg class="dial-svg" id="dial-svg" viewBox="0 0 300 200" xmlns="http://www.w3.org/2000/svg"${isWaiting ? '' : ' style="cursor:grab;"'}>
@@ -113,7 +105,7 @@ function renderGuessing() {
         <path class="dial-track" d="M 20,150 A 130,130 0 0,1 280,150" />
         <path class="dial-fill" id="dial-fill" d="M 20,150 A 130,130 0 0,1 280,150"
           style="stroke-dasharray:408.41;" />
-        ${dialTicks}
+        ${buildDialTicks()}
         <line class="dial-needle" id="dial-needle" x1="150" y1="150" x2="20" y2="150" />
         <circle class="dial-pivot" cx="150" cy="150" r="10" />
         <text x="20" y="190" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-weight="700" font-size="14" fill="#10b981">${label1}</text>
@@ -141,10 +133,8 @@ function renderGuessing() {
     const otherGuessers = (s.players || []).filter(p => !p.spectator && p.id !== s.vibeManId && p.id !== s.myId);
     let miniDialsHtml = '';
     if (otherGuessers.length > 0) {
-      const knownMap = {};
-      (s.liveGuesses || []).forEach(g => { knownMap[g.id] = g; });
+      const knownMap = buildKnownMap(s.liveGuesses);
       const pct = s.totalGuessers > 0 ? Math.round((s.guessCount / s.totalGuessers) * 100) : 0;
-      const cols = otherGuessers.length === 1 ? 1 : otherGuessers.length <= 4 ? 2 : otherGuessers.length <= 9 ? 3 : 4;
       miniDialsHtml = `
         <div class="card" style="margin-top:1rem;">
           <div class="row-between" style="margin-bottom:0.6rem;">
@@ -154,7 +144,7 @@ function renderGuessing() {
           <div class="progress-bar" style="margin-bottom:1rem;">
             <div id="guesser-guess-progress" class="progress-fill" style="width:${pct}%"></div>
           </div>
-          <div class="mini-dial-grid" style="--mini-cols:${cols};">
+          <div class="mini-dial-grid" style="--mini-cols:${miniColCount(otherGuessers.length)};">
             ${otherGuessers.map(p => renderMiniDialCard(p, knownMap)).join('')}
           </div>
         </div>`;
@@ -278,7 +268,7 @@ function attachGuessListeners() {
   function getSVGPoint(clientX, clientY) {
     const rect = svg.getBoundingClientRect();
     const scaleX = 300 / rect.width;
-    const scaleY = 170 / rect.height;
+    const scaleY = 200 / rect.height;
     return {
       x: (clientX - rect.left) * scaleX,
       y: (clientY - rect.top)  * scaleY,

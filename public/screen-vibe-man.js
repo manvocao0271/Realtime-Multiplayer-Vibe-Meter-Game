@@ -11,7 +11,6 @@ function renderVibeManBanner(s) {
         : `<span class="badge badge-purple">Vibe Man: ${esc(s.vibeManName)}</span>`
       }
       <span class="badge badge-purple">Round ${s.roundNumber}</span>
-      <span class="badge badge-yellow">Goal: ${s.pointsGoal} pts</span>
     </div>
   `;
 }
@@ -178,8 +177,7 @@ function renderVibeManWaiting() {
   const pct = s.totalGuessers > 0 ? Math.round((s.guessCount / s.totalGuessers) * 100) : 0;
   const vibeManId = s.vibeManId;
   const guessers = (s.players || []).filter(p => !p.spectator && !p.disconnected && p.id !== vibeManId);
-  const knownMap = {};
-  (s.liveGuesses || []).forEach(g => { knownMap[g.id] = g; });
+  const knownMap = buildKnownMap(s.liveGuesses);
 
   return `
     <div class="fade-in">
@@ -203,7 +201,7 @@ function renderVibeManWaiting() {
         <div class="progress-bar" style="margin-bottom:1rem;">
           <div id="vm-guess-progress" class="progress-fill" style="width:${pct}%"></div>
         </div>
-        <div class="mini-dial-grid" style="--mini-cols:${guessers.length === 1 ? 1 : guessers.length <= 4 ? 2 : guessers.length <= 9 ? 3 : 4};">
+        <div class="mini-dial-grid" style="--mini-cols:${miniColCount(guessers.length)};">
           ${guessers.map(p => renderMiniDialCard(p, knownMap)).join('')}
         </div>
       </div>

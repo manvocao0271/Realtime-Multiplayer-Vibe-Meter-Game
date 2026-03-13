@@ -97,3 +97,30 @@ function renderPlayerItem(p, s) {
     </div>
   `;
 }
+
+// -- Dial tick marks (shared SVG element) --------------------
+// Generates 11 evenly-spaced tick lines for the semicircle dial.
+// Assumes the standard dial coordinate system: CX=150, CY=150.
+function buildDialTicks() {
+  return Array.from({ length: 11 }, (_, i) => {
+    const angle = Math.PI - (i / 10) * Math.PI;
+    const r1 = 116, r2 = 144, cx = 150, cy = 150;
+    const x1 = cx + r1 * Math.cos(angle), y1 = cy - r1 * Math.sin(angle);
+    const x2 = cx + r2 * Math.cos(angle), y2 = cy - r2 * Math.sin(angle);
+    return `<line class="dial-tick${i === 0 || i === 10 ? ' dial-tick-end' : ''}" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" />`;
+  }).join('');
+}
+
+// -- Live-guess lookup map -----------------------------------
+// Builds { [playerId]: guessData } from the server's liveGuesses array.
+function buildKnownMap(liveGuesses) {
+  const map = {};
+  (liveGuesses || []).forEach(g => { map[g.id] = g; });
+  return map;
+}
+
+// -- Mini-dial grid column count ----------------------------
+// Returns the number of columns for the mini-dial grid based on player count.
+function miniColCount(n) {
+  return n === 1 ? 1 : n <= 4 ? 2 : n <= 9 ? 3 : 4;
+}

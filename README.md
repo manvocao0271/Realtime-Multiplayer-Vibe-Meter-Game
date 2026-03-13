@@ -7,11 +7,14 @@ A real-time multiplayer party game where one player writes a "vibe story" — a 
 ## How to Play
 
 ### Setup
-1. Run the server and visit `http://localhost:3000`. A unique room is created automatically and you are redirected to its URL (e.g. `http://localhost:3000/ABCDEF`).
-2. Share that URL with friends — they join by opening the same link.
-3. The **first player to join** becomes the host.
-4. The host picks a **points goal** (25, 50, or 75) and clicks *Start Game*.
-5. Every player enters a pair of **polar-opposite phrases** (e.g. *"morning person"* vs *"night owl"*, *"totally sober"* vs *"blackout drunk"*). These become the scoring scales for the rounds.
+1. Run the server and visit `http://localhost:3000`.
+2. Choose **Create Lobby** to generate a unique 4-letter room code (e.g. `ABCD`), or enter a friend's 4-letter code to join.
+3. You can also open a room URL directly (e.g. `http://localhost:3000/ABCD`).
+4. After creating or selecting a room, enter your name to join/spectate.
+5. Share that room URL with friends — they join by opening the same link.
+6. The **first player to join** becomes the host.
+7. The host picks a **points goal** (25, 50, or 75) and clicks *Start Game*.
+8. Every player enters a pair of **polar-opposite phrases** (e.g. *"morning person"* vs *"night owl"*, *"totally sober"* vs *"blackout drunk"*). These become the scoring scales for the rounds.
 
 ### Gameplay Loop
 
@@ -56,7 +59,7 @@ pip install -r requirements.txt
 python app.py   # →  http://localhost:3000
 ```
 
-Visit `http://localhost:3000` — a room is created automatically and you'll be redirected to its URL. Share `http://<your-local-ip>:3000` with anyone on the same Wi-Fi to let them create or join rooms.
+Visit `http://localhost:3000` and choose **Create Lobby** or **Join Lobby**. Share `http://<your-local-ip>:3000` with anyone on the same Wi-Fi so they can create or join rooms.
 
 ### Exposing via Cloudflare Tunnel (for remote players)
 
@@ -66,7 +69,7 @@ Open a **second terminal** and run:
 cloudflared tunnel --url localhost:3000
 ```
 
-Cloudflare will print a public `https://` URL. Share the full room URL (e.g. `https://<tunnel>.trycloudflare.com/ABCDEF`) with anyone, anywhere.
+Cloudflare will print a public `https://` URL. Share the full room URL (e.g. `https://<tunnel>.trycloudflare.com/ABCD`) with anyone, anywhere.
 
 | Terminal | Command | Purpose |
 |----------|---------|---------|
@@ -137,7 +140,7 @@ rooms: dict[str, VibeMeterGame]
 sid_to_room: dict[str, str]   ← reverse index for O(1) disconnect lookup
 ```
 
-`GET /` auto-creates a room, generates a 6-character alphanumeric code, and redirects the browser to `/<CODE>`. Subsequent visitors to the same URL join the existing room.
+`GET /` serves a home screen where users can create a room or enter a 4-letter code. Room URLs use `/<CODE>` (e.g. `/ABCD`). Subsequent visitors to the same URL join the existing room.
 
 ### Broadcast / State Flow
 
@@ -175,6 +178,8 @@ socketio.start_background_task(task)
 ```
 
 Replacing `self._guess_token` (e.g. when a new round starts) silently invalidates any pending task.
+
+The advance-to-next-round logic (shared between the normal 10 s results timer and the host-triggered 2× speed-up) is extracted into a single `_start_advance_task(code, token, delay_seconds)` helper to avoid duplicating the `_run` closure.
 
 ### Client Render Pipeline
 
@@ -227,7 +232,8 @@ Each branch shows the same **tip card** (`_currentRoundTip`) — one tip is pick
 | **Multi-room support** | Each visiting browser automatically gets its own isolated room; stale rooms with no active connections are cleaned up automatically |
 | **Name persistence** | Player name is saved to `localStorage` and pre-filled on re-open; capped at 10 characters |
 | **Results visualisation** | After each round, a unified card shows the dial with every guess overlaid plus the vibe story; direct hits are highlighted in magenta and the leaderboard sidebar updates live |
-| **Phrase suggestion voting** | Right sidebar includes a persistent suggestion panel during all `playing` phases with per-suggestion ✓ / ✗ voting; decisions are resolved only when each round-results timer ends |
+| **Phrase suggestion voting** | Right sidebar includes a persistent suggestion panel during all `playing` phases with per-suggestion ✓ / ✗ voting; decisions are resolved only when each round-results timer ends; the panel is empty (hidden) when no suggestions are pending |
+| **Points goal display** | Points goal is shown only in the leaderboard sidebar header ("First to X pts wins"); no redundant badge during playing screens |
 | **Restart flow** | Host can restart from the game-over screen; all clients reset via a `reset` Socket.IO event |
 | **XSS prevention** | All user-supplied strings are HTML-escaped via a dedicated `esc()` helper before injection into the DOM |
 | **Toast notifications** | Non-blocking error / info toasts with auto-dismiss and slide-out animation |
@@ -310,6 +316,8 @@ Break the single `server.js` into independently deployable services:
 - [x] Restart / Play Again flow from game-over screen
 - [x] Name persistence via `localStorage` (capped at 10 characters)
 - [x] XSS-safe HTML escaping throughout the client
+- [x] Code quality pass — shared JS utilities extracted (`buildDialTicks`, `buildKnownMap`, `miniColCount`); duplicated round-advance closure unified into `_start_advance_task`; dead client code removed; `scaleY` viewBox bug fixed in guessing dial
+- [x] Points goal display consolidated to leaderboard sidebar header only
 
 ### Upcoming
 - [ ] Redis shared-state layer + Socket.IO Redis adapter
