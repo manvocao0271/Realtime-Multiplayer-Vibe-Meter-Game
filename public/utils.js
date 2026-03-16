@@ -112,6 +112,90 @@ function buildDialTicks() {
   }).join('');
 }
 
+// -- Main guessing dial helpers ------------------------------
+const MAIN_DIAL = {
+  cx: 150,
+  cy: 150,
+  radius: 130,
+  needleRadius: 112,
+  arcLength: Math.PI * 130,
+};
+
+function valueToDialAngle(value) {
+  const clamped = Math.max(1, Math.min(100, Number(value) || 1));
+  return Math.PI - ((clamped - 1) / 99) * Math.PI;
+}
+
+function angleToDialValue(angle) {
+  const clamped = Math.max(0, Math.min(Math.PI, angle));
+  return Math.round(1 + ((Math.PI - clamped) / Math.PI) * 99);
+}
+
+function setMainDialValue(value, elements = {}) {
+  const clamped = Math.max(1, Math.min(100, Number(value) || 1));
+  const angle = valueToDialAngle(clamped);
+  const nx = MAIN_DIAL.cx + MAIN_DIAL.needleRadius * Math.cos(angle);
+  const ny = MAIN_DIAL.cy - MAIN_DIAL.needleRadius * Math.sin(angle);
+  const fraction = (clamped - 1) / 99;
+  const dashOffset = MAIN_DIAL.arcLength * (1 - fraction);
+
+  if (elements.needle) {
+    elements.needle.setAttribute('x2', nx.toFixed(2));
+    elements.needle.setAttribute('y2', ny.toFixed(2));
+  }
+  if (elements.fill) {
+    elements.fill.style.strokeDasharray = MAIN_DIAL.arcLength.toFixed(2);
+    elements.fill.style.strokeDashoffset = dashOffset.toFixed(2);
+  }
+  if (elements.display) {
+    elements.display.textContent = clamped;
+  }
+
+  return clamped;
+}
+
+function renderMainDial({
+  value = 50,
+  label1 = '',
+  label2 = '',
+  interactive = false,
+  showReadout = true,
+  gradientId = 'dialGrad',
+  svgId = 'dial-svg',
+  fillId = 'dial-fill',
+  needleId = 'dial-needle',
+  displayId = 'guess-display',
+  wrapStyle = 'margin:0.5rem 0 0;',
+} = {}) {
+  const initialValue = Math.max(1, Math.min(100, Number(value) || 50));
+  const angle = valueToDialAngle(initialValue);
+  const nx = MAIN_DIAL.cx + MAIN_DIAL.needleRadius * Math.cos(angle);
+  const ny = MAIN_DIAL.cy - MAIN_DIAL.needleRadius * Math.sin(angle);
+  const dashOffset = MAIN_DIAL.arcLength * (1 - ((initialValue - 1) / 99));
+
+  return `
+    <div class="dial-wrap" style="${wrapStyle}">
+      <svg class="dial-svg" id="${svgId}" viewBox="0 0 300 200" xmlns="http://www.w3.org/2000/svg"${interactive ? ' style="cursor:grab;"' : ''}>
+        <defs>
+          <linearGradient id="${gradientId}" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%"   stop-color="#10b981" />
+            <stop offset="50%"  stop-color="#a855f7" />
+            <stop offset="100%" stop-color="#ef4444" />
+          </linearGradient>
+        </defs>
+        <path class="dial-track" d="M 20,150 A 130,130 0 0,1 280,150" />
+        <path class="dial-fill" id="${fillId}" d="M 20,150 A 130,130 0 0,1 280,150"
+          style="stroke-dasharray:${MAIN_DIAL.arcLength.toFixed(2)};stroke-dashoffset:${dashOffset.toFixed(2)};stroke:url(#${gradientId});" />
+        ${buildDialTicks()}
+        <line class="dial-needle" id="${needleId}" x1="150" y1="150" x2="${nx.toFixed(2)}" y2="${ny.toFixed(2)}" />
+        <circle class="dial-pivot" cx="150" cy="150" r="10" />
+        <text x="20" y="190" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-weight="700" font-size="14" fill="#10b981">${label1}</text>
+        <text x="280" y="190" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-weight="700" font-size="14" fill="#ef4444">${label2}</text>
+      </svg>
+      ${showReadout ? `<div class="dial-readout" id="${displayId}">${initialValue}</div>` : ''}
+    </div>`;
+}
+
 // -- Live-guess lookup map -----------------------------------
 // Builds { [playerId]: guessData } from the server's liveGuesses array.
 function buildKnownMap(liveGuesses) {

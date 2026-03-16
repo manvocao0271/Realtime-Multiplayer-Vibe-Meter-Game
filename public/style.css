@@ -1365,12 +1365,12 @@ textarea {
   to   { width: 0%; }
 }
 
-.countdown-bar-10 {
+.countdown-bar-75 {
   height: 100%;
   width: 100%;
   background: var(--grad-primary);
   border-radius: 99px;
-  animation: countdown-drain 10s linear forwards;
+  animation: countdown-drain 7.5s linear forwards;
   transform-origin: left center;
 }
 

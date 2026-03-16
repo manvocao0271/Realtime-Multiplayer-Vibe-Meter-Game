@@ -151,7 +151,7 @@ function renderResults() {
       <div class="card results-timer-ctrl" style="margin-top:1rem;">
         <div class="results-timer-head">
           <p style="font-size:0.85rem;margin:0;color:var(--text-dim);">
-            next round starting&hellip;
+            Next round starting&hellip;
           </p>
           ${s.isVibeman ? `
             <button class="btn ${s.roundResultsFast ? 'btn-secondary' : 'btn-primary'}" id="speed-up-next-round-btn"
@@ -162,7 +162,7 @@ function renderResults() {
           ` : ''}
         </div>
         <div class="countdown-bar-wrap">
-          <div class="countdown-bar-10" id="results-timer-bar"></div>
+          <div class="countdown-bar-75" id="results-timer-bar"></div>
         </div>
       </div>
     </div>
@@ -191,14 +191,6 @@ function patchResults() {
       btn.classList.remove('btn-primary');
       btn.classList.add('btn-secondary');
     }
-  }
-  // Reset the CSS animation so it restarts from the correct position
-  // with the new deadline before handing off to startResultsCountdown
-  const bar = document.getElementById('results-timer-bar');
-  if (bar) {
-    bar.style.animationName = 'none';
-    void bar.offsetWidth; // force reflow
-    bar.style.animationName = '';
   }
   startResultsCountdown();
 }
