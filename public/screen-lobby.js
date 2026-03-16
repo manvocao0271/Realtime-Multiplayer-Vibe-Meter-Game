@@ -44,7 +44,7 @@ function renderLobby() {
               ${activeCt < 2 ? 'disabled' : ''}>
               ${activeCt < 2 ? 'Waiting for more players...' : 'Start Game'}
             </button>
-            ${activeCt < 2 ? `<p style="font-size:0.8rem;margin-top:0.5rem;text-align:center;">Need at least 2 players.</p>` : ''}
+            <p id="lobby-hint" style="font-size:0.8rem;margin-top:0.5rem;text-align:center;${activeCt >= 2 ? 'display:none;' : ''}">Need at least 2 players.</p>
           ` : `
             <div class="callout callout-info">
               <div class="callout-title"><span class="waiting-pulse"></span> Waiting for host to start...</div>
@@ -57,11 +57,32 @@ function renderLobby() {
   `;
 }
 
+function patchLobby() {
+  const s = currentState;
+  const players = s.players || [];
+  const activeCt = players.filter(p => !p.spectator).length;
+
+  const sectionTitle = document.querySelector('#app .section-title');
+  if (sectionTitle) sectionTitle.textContent = `Players (${activeCt})`;
+
+  const list = document.querySelector('#app .player-list');
+  if (list) list.innerHTML = players.map(p => renderPlayerItem(p, s)).join('');
+
+  if (s.isHost) {
+    const btn = document.getElementById('start-btn');
+    if (btn) {
+      btn.disabled = activeCt < 2;
+      btn.textContent = activeCt < 2 ? 'Waiting for more players...' : 'Start Game';
+    }
+    const hint = document.getElementById('lobby-hint');
+    if (hint) hint.style.display = activeCt < 2 ? '' : 'none';
+  }
+}
+
 function attachLobbyListeners() {
   let selectedGoal = 25;
   document.querySelectorAll('.goal-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      playSound('click');
       selectedGoal = Number(btn.dataset.goal);
       document.querySelectorAll('.goal-btn').forEach(b => {
         b.classList.toggle('btn-primary', b === btn);
@@ -70,12 +91,11 @@ function attachLobbyListeners() {
     });
   });
   document.getElementById('start-btn')?.addEventListener('click', () => {
-    playSound('submit');
+    playSound('gameStart');
     socket.emit('start', { pointsGoal: selectedGoal });
   });
   const copyBtn = document.getElementById('copy-link-btn');
   copyBtn?.addEventListener('click', () => {
-    playSound('click');
     navigator.clipboard.writeText(window.location.href).then(() => {
       if (copyBtn) { copyBtn.textContent = 'Copied!'; setTimeout(() => { if (copyBtn) copyBtn.textContent = 'Copy'; }, 2000); }
     });

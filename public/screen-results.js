@@ -22,12 +22,13 @@ function renderResults() {
 
   const dialTicks = buildDialTicks();
 
-  const diffColor = (diff) => {
-    if (diff === 0) return '#d946ef';
-    if (diff <= 5) return '#34d399';
-    if (diff <= 7) return '#fbbf24';
-    if (diff <= 9) return '#fb923c';
-    return '#f87171';
+  const ptsColor = (pts) => {
+    if (pts >= 7)  return '#d946ef'; // magenta  — bullseye (7 or 14)
+    if (pts === 6) return '#60a5fa'; // blue     — extreme zone hit
+    if (pts === 3) return '#34d399'; // green    — close
+    if (pts === 2) return '#fbbf24'; // yellow   — decent
+    if (pts === 1) return '#fb923c'; // orange   — far
+    return '#6b7280';                // gray     — 0 points
   };
 
   // ── Peacock-fan label placement ────────────────────────────
@@ -57,7 +58,7 @@ function renderResults() {
   }
 
   const markerAndLabels = fanItems.map(({ r, guessAngle, labelAngle }) => {
-    const color = diffColor(r.diff);
+    const color = ptsColor(r.pts);
     const dx = (CX + R * Math.cos(guessAngle)).toFixed(1);
     const dy = (CY - R * Math.sin(guessAngle)).toFixed(1);
     const lx = CX + LABEL_R * Math.cos(labelAngle);
@@ -113,9 +114,6 @@ function renderResults() {
       <div class="card ${heroBullseye ? 'success' : ''}" style="text-align:center;padding:1.5rem;margin-bottom:1rem;">
         <div style="font-size:2.5rem;margin-bottom:0.25rem;">${heroEmoji}</div>
         <h3>${heroText}</h3>
-        <p style="margin-top:0.3rem;">
-          The secret number was <strong style="color:var(--text);font-size:1.1em;">${trueVal}</strong>
-        </p>
       </div>
 
       <div class="card" style="margin-bottom:1rem;">
@@ -153,13 +151,13 @@ function renderResults() {
       <div class="card results-timer-ctrl" style="margin-top:1rem;">
         <div class="results-timer-head">
           <p style="font-size:0.85rem;margin:0;color:var(--text-dim);">
-            Next round starting in <span id="results-next-round-secs">10 seconds</span>&hellip;
+            next round starting&hellip;
           </p>
           ${s.isVibeman ? `
             <button class="btn ${s.roundResultsFast ? 'btn-secondary' : 'btn-primary'}" id="speed-up-next-round-btn"
                     ${s.roundResultsFast ? 'disabled' : ''}
                     style="padding:0.35rem 0.7rem;font-size:0.78rem;">
-              ${s.roundResultsFast ? '4x Enabled' : '4x Speed'}
+              ${s.roundResultsFast ? '<<<' : 'Fast Forward'}
             </button>
           ` : ''}
         </div>
@@ -176,8 +174,8 @@ function attachResultsListeners() {
   if (!btn) return;
   btn.addEventListener('click', () => {
     btn.setAttribute('disabled', 'true');
-    btn.textContent = '4x Enabled';
-    playSound('click');
+    btn.textContent = '<<<';
+    playSound('fastForward');
     socket.emit('speed-up-next-round');
   });
 }
@@ -189,7 +187,7 @@ function patchResults() {
     const btn = document.getElementById('speed-up-next-round-btn');
     if (btn) {
       btn.setAttribute('disabled', 'true');
-      btn.textContent = '4x Enabled';
+      btn.textContent = '<<<';
       btn.classList.remove('btn-primary');
       btn.classList.add('btn-secondary');
     }

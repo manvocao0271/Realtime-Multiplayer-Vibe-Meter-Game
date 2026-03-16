@@ -1147,7 +1147,6 @@ if __name__ == '__main__':
     socketio.start_background_task(_cleanup_rooms)
     print(f'\n\U0001f3ae  Vibe Meter is running!')
     print(f'   \u279c  http://localhost:{PORT}')
-    print(f'   Visit / to create a new room \u2014 share the URL with friends!\n')
     try:
         socketio.run(app, host='0.0.0.0', port=PORT)
     except KeyboardInterrupt:

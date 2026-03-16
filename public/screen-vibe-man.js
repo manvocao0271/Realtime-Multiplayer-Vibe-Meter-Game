@@ -82,7 +82,7 @@ function renderWaitForPhraseSelect() {
 function attachPhraseSelectListeners() {
   document.querySelectorAll('.phrase-pick-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      playSound('submit');
+      playSound('phraseSelect');
       socket.emit('select-phrase', { phraseId: Number(btn.dataset.phraseId) });
     });
   });
