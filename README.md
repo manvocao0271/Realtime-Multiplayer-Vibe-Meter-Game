@@ -212,34 +212,6 @@ render()
 
 Each branch shows the same **tip card** (`_currentRoundTip`) — one tip is picked per round via a shuffled-deck cycle and held constant until `renderResults()` resets it.
 
-### Client-Side Features (fully implemented)
-
-| Feature | Detail |
-|---------|--------|
-| **Unified guessing screen** | A single `renderGuessing()` handles three states: oscillating locked dial while Vibe Man writes, interactive dial + vibe story for active guessing, and a story-only card after locking in a guess |
-| **Interactive SVG dial** | Semicircular gauge for submitting guesses; drag or click, full mouse + touch support |
-| **Phrase-select screen** | Vibe Man picks which submitted phrase to use each round; the server tracks which phrases they've used recently and auto-resets when all are exhausted |
-| **Scaled guess timer** | Timer runs 15–30 s depending on story length (characters excl. spaces, capped at +15 s); countdown bar and live second-ticker; round auto-resolves on expiry |
-| **Live drag positions** | While guessing, each player's dial position is streamed to the server (throttled ~25 fps) and forwarded to the current Vibe Man **and any guesser who has already submitted** as a mini-dial dashboard |
-| **Observer visibility** | Spectators can watch the same live mini-dial board during guessing and see the full round-results view |
-| **Tip system** | One tip from a shuffled deck is shown per round across all three guessing states; tips cover scoring brackets, extreme-zone rules, and strategy hints |
-| **Vibe Man scoring** | After each round the Vibe Man earns ⌈average guessers' score⌉, incentivising clear writing |
-| **Bullseye tracker** | Scores ≤ 5 away are counted separately per player and displayed with 🎯 in the leaderboard sidebar |
-| **Points goal selector** | Host picks 25, 50, or 75 as the winning threshold in the lobby before starting |
-| **Spectator / late-join flow** | Players who join mid-game spectate, submit a phrase, and are promoted to full players at the start of the next round |
-| **Player reconnection** | If a player disconnects and rejoins with the same name, their score, rotation slot, and phrase history are fully restored |
-| **In-place DOM patching** | The phrase-input and guessing screens patch counters and mini-dials without replacing interactive elements, preventing flicker |
-| **Multi-room support** | Each visiting browser automatically gets its own isolated room; stale rooms with no active connections are cleaned up automatically |
-| **Name persistence** | Player name is saved to `localStorage` and pre-filled on re-open; capped at 10 characters |
-| **Results visualisation** | After each round, a unified card shows the dial with every guess overlaid plus the vibe story; direct hits are highlighted in magenta and the leaderboard sidebar updates live |
-| **Phrase suggestion voting** | Right sidebar includes a persistent suggestion panel during all `playing` phases with per-suggestion ✓ / ✗ voting; decisions are resolved only when each round-results timer ends; the panel is empty (hidden) when no suggestions are pending |
-| **Points goal display** | Points goal is shown only in the leaderboard sidebar header ("First to X pts wins"); no redundant badge during playing screens |
-| **Restart flow** | Host can restart from the game-over screen; all clients reset via a `reset` Socket.IO event |
-| **XSS prevention** | All user-supplied strings are HTML-escaped via a dedicated `esc()` helper before injection into the DOM |
-| **Toast notifications** | Non-blocking error / info toasts with auto-dismiss and slide-out animation |
-
----
-
 ## Planned Distributed Systems Integration
 
 The goal of this project is to evolve the above monolith into a reference implementation for full-scale distributed systems patterns. The planned layers are:

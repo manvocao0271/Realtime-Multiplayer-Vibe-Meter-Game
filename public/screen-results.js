@@ -159,7 +159,7 @@ function renderResults() {
             <button class="btn ${s.roundResultsFast ? 'btn-secondary' : 'btn-primary'}" id="speed-up-next-round-btn"
                     ${s.roundResultsFast ? 'disabled' : ''}
                     style="padding:0.35rem 0.7rem;font-size:0.78rem;">
-              ${s.roundResultsFast ? '4x Enabled' : '4x Speed'}
+              ${s.roundResultsFast ? '<<<' : 'Fast Forward'}
             </button>
           ` : ''}
         </div>
@@ -176,8 +176,8 @@ function attachResultsListeners() {
   if (!btn) return;
   btn.addEventListener('click', () => {
     btn.setAttribute('disabled', 'true');
-    btn.textContent = '4x Enabled';
-    playSound('click');
+    btn.textContent = '<<<';
+    playSound('fastForward');
     socket.emit('speed-up-next-round');
   });
 }
@@ -189,7 +189,7 @@ function patchResults() {
     const btn = document.getElementById('speed-up-next-round-btn');
     if (btn) {
       btn.setAttribute('disabled', 'true');
-      btn.textContent = '4x Enabled';
+      btn.textContent = '<<<';
       btn.classList.remove('btn-primary');
       btn.classList.add('btn-secondary');
     }

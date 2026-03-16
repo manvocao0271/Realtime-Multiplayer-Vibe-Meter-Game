@@ -116,6 +116,48 @@ function renderPhraseSuggestionsPanel() {
   `;
 }
 
+function patchSidebar() {
+  const s = currentState;
+  if (!s) return;
+  const sidebar = document.getElementById('leaderboard-sidebar');
+  if (!sidebar) return;
+
+  // Render into a temp element then surgically swap non-input sections
+  const tmp = document.createElement('div');
+  tmp.innerHTML = renderLeaderboard();
+
+  // Swap leaderboard rows
+  const destList = sidebar.querySelector('.lb-list');
+  const srcList  = tmp.querySelector('.lb-list');
+  if (destList && srcList) destList.innerHTML = srcList.innerHTML;
+
+  // Swap spectators section (may appear or disappear)
+  const destSpec = sidebar.querySelector('.lb-spectators');
+  const srcSpec  = tmp.querySelector('.lb-spectators');
+  if (srcSpec && destSpec)       destSpec.innerHTML = srcSpec.innerHTML;
+  else if (srcSpec && !destSpec) sidebar.querySelector('.lb-list')?.insertAdjacentHTML('afterend', srcSpec.outerHTML);
+  else if (!srcSpec && destSpec) destSpec.remove();
+
+  // Swap suggestion votes only — preserve sp-form user inputs
+  const destPanel = sidebar.querySelector('.sp-panel');
+  const srcPanel  = tmp.querySelector('.sp-panel');
+  if (destPanel && srcPanel) {
+    const destSpList = destPanel.querySelector('.sp-list');
+    const srcSpList  = srcPanel.querySelector('.sp-list');
+    if (destSpList) destSpList.remove();
+    if (srcSpList)  destPanel.appendChild(srcSpList);
+    // Re-attach vote listeners on the freshly inserted nodes
+    destPanel.querySelectorAll('.sp-vote-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const suggestionId = Number(btn.dataset.suggestionId);
+        const vote = btn.dataset.vote;
+        if (!suggestionId || (vote !== 'yes' && vote !== 'no')) return;
+        socket.emit('vote-suggested-phrase', { suggestionId, vote });
+      });
+    });
+  }
+}
+
 function attachSidebarListeners() {
   const s = currentState;
   if (!s || s.phase !== 'playing') return;
@@ -139,7 +181,6 @@ function attachSidebarListeners() {
       const suggestionId = Number(btn.dataset.suggestionId);
       const vote = btn.dataset.vote;
       if (!suggestionId || (vote !== 'yes' && vote !== 'no')) return;
-      playSound('click');
       socket.emit('vote-suggested-phrase', { suggestionId, vote });
     });
   });

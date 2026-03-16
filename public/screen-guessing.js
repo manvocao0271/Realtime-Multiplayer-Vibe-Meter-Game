@@ -296,7 +296,6 @@ function attachGuessListeners() {
 
   svg.addEventListener('mousedown', (e) => {
     dragging = true;
-    playSound('click');
     svg.style.cursor = 'grabbing';
     handleMove(e.clientX, e.clientY);
     e.preventDefault();
@@ -313,7 +312,6 @@ function attachGuessListeners() {
 
   svg.addEventListener('touchstart', (e) => {
     dragging = true;
-    playSound('click');
     const t = e.touches[0];
     handleMove(t.clientX, t.clientY);
     e.preventDefault();

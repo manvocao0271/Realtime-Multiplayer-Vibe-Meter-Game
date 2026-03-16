@@ -24,6 +24,11 @@ let lastRenderKey = null;
 let guessCountdownInterval = null;
 let resultsCountdownInterval = null;
 
+function stopGuessCountdown() {
+  clearInterval(guessCountdownInterval);
+  guessCountdownInterval = null;
+}
+
 function startGuessCountdown() {
   clearInterval(guessCountdownInterval);
   guessCountdownInterval = null;

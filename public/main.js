@@ -33,17 +33,18 @@ socket.on('connect_error', () => {
 });
 
 // -- Render Entry Point --------------------------------------
-let _prevPhaseKey = null;
+let _prevPhaseKey   = null;
+let _prevSidebarKey = null;
 
 function _onPhaseChange(prevKey) {
   if (!prevKey) return; // skip initial page load
   const s = currentState;
   if (!s) return;
+  stopGuessCountdown();
   if (s.phase === 'game-over')          { playSound('gameover');   return; }
   if (s.roundPhase === 'guessing')      { playSound('reveal');     return; }
   if (s.phase === 'phrase-input')       { playSound('phaseStart'); return; }
-  if (s.roundPhase === 'phrase-select') { playSound('phaseStart'); return; }
-  if (s.roundPhase === 'vibe-writing')  { playSound('phaseStart'); return; }
+  if (s.roundPhase === 'phrase-select') { playSound(prevKey?.startsWith('phrase-input') ? 'allPhrasesIn' : 'phaseStart'); return; }
 }
 
 function render() {
@@ -61,11 +62,18 @@ function render() {
 
   if (currentState.phase === 'playing') {
     appWrapper.classList.add('with-sidebar');
-    sidebar.innerHTML = renderLeaderboard();
-    attachSidebarListeners();
+    const sKey = `${currentState.phase}:${currentState.roundPhase || ''}`;
+    if (_prevSidebarKey !== sKey) {
+      sidebar.innerHTML = renderLeaderboard();
+      attachSidebarListeners();
+      _prevSidebarKey = sKey;
+    } else {
+      patchSidebar();
+    }
   } else {
     appWrapper.classList.remove('with-sidebar');
     sidebar.innerHTML = '';
+    _prevSidebarKey = null;
   }
 
   const _phaseKey = `${currentState.phase}:${currentState.roundPhase || ''}`;
@@ -75,11 +83,17 @@ function render() {
   }
 
   switch (currentState.phase) {
-    case 'lobby':
-      lastRenderKey = null;
-      app.innerHTML = renderLobby();
-      attachLobbyListeners();
+    case 'lobby': {
+      const lobbyKey = `lobby:${currentState.isHost}`;
+      if (lastRenderKey === lobbyKey) {
+        patchLobby();
+      } else {
+        app.innerHTML = renderLobby();
+        attachLobbyListeners();
+        lastRenderKey = lobbyKey;
+      }
       break;
+    }
     case 'phrase-input': {
       if (currentState.isSpectator) {
         app.innerHTML = renderSpectator();
@@ -126,11 +140,15 @@ function render() {
       lastRenderKey = playKey;
       break;
     }
-    case 'game-over':
-      lastRenderKey = null;
-      app.innerHTML = renderGameOver();
-      attachGameOverListeners();
+    case 'game-over': {
+      const goKey = `game-over:${currentState.isHost}`;
+      if (lastRenderKey !== goKey) {
+        app.innerHTML = renderGameOver();
+        attachGameOverListeners();
+        lastRenderKey = goKey;
+      }
       break;
+    }
     default:
       app.innerHTML = '<div class="connecting-screen"><div class="spinner"></div><p>Loading...</p></div>';
   }
