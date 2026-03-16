@@ -521,7 +521,7 @@ def start_guess_timer(code: str) -> None:
     socketio.start_background_task(_run)
 
 
-def _start_advance_task(code: str, token: object, delay_seconds: float) -> None:
+def _start_advance_task(code: str, token: object, delay_seconds: int) -> None:
     """Launch the background task that advances or ends the game after the results timer."""
     def _run() -> None:
         socketio.sleep(delay_seconds)
