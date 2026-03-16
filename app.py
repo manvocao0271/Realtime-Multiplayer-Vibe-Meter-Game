@@ -1030,8 +1030,8 @@ def on_speed_up_next_round():
     now_ms = int(time.time() * 1000)
     deadline = game.round_results_deadline or now_ms
     remaining_ms = max(0, deadline - now_ms)
-    # Speed up by 2x from the current moment by halving remaining time.
-    new_remaining_ms = max(1000, remaining_ms // 2)
+    # Speed up by 4x from the current moment by quartering remaining time.
+    new_remaining_ms = max(1000, remaining_ms // 4)
     new_remaining_seconds = max(1, math.ceil(new_remaining_ms / 1000))
 
     game.round_results_fast = True

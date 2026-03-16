@@ -128,6 +128,7 @@ function attachSidebarListeners() {
     const l1 = (label1?.value || '').trim().slice(0, 20);
     const l2 = (label2?.value || '').trim().slice(0, 20);
     if (!l1 || !l2) return showToast('Enter both opposite phrases.', 'error');
+    playSound('submit');
     socket.emit('suggest-phrase', { label1: l1, label2: l2 });
     if (label1) label1.value = '';
     if (label2) label2.value = '';
@@ -138,6 +139,7 @@ function attachSidebarListeners() {
       const suggestionId = Number(btn.dataset.suggestionId);
       const vote = btn.dataset.vote;
       if (!suggestionId || (vote !== 'yes' && vote !== 'no')) return;
+      playSound('click');
       socket.emit('vote-suggested-phrase', { suggestionId, vote });
     });
   });

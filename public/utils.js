@@ -15,6 +15,7 @@ function esc(str) {
 
 // -- Toast helper --------------------------------------------
 function showToast(msg, type = 'info') {
+  if (type === 'error') playSound('error');
   const container = document.getElementById('toast-container');
   const el = document.createElement('div');
   el.className = `toast${type === 'error' ? ' error' : ''}`;

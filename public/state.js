@@ -38,10 +38,15 @@ function startGuessCountdown() {
     bar.style.animationDelay = `-${elapsed}s`;
   }
 
+  let _lastBeepSec = -1;
   function tick() {
     const secs = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
     const el = document.getElementById('guess-timer-secs');
     if (el) el.textContent = secs === 1 ? '1 second...' : `${secs} seconds...`;
+    if (secs <= 3 && secs > 0 && secs !== _lastBeepSec) {
+      _lastBeepSec = secs;
+      playSound('countdown');
+    }
     if (secs === 0) { clearInterval(guessCountdownInterval); guessCountdownInterval = null; }
   }
   tick();

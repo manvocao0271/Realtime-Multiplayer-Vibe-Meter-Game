@@ -33,6 +33,19 @@ socket.on('connect_error', () => {
 });
 
 // -- Render Entry Point --------------------------------------
+let _prevPhaseKey = null;
+
+function _onPhaseChange(prevKey) {
+  if (!prevKey) return; // skip initial page load
+  const s = currentState;
+  if (!s) return;
+  if (s.phase === 'game-over')          { playSound('gameover');   return; }
+  if (s.roundPhase === 'guessing')      { playSound('reveal');     return; }
+  if (s.phase === 'phrase-input')       { playSound('phaseStart'); return; }
+  if (s.roundPhase === 'phrase-select') { playSound('phaseStart'); return; }
+  if (s.roundPhase === 'vibe-writing')  { playSound('phaseStart'); return; }
+}
+
 function render() {
   const appWrapper = document.getElementById('app-wrapper');
   const app        = document.getElementById('app');
@@ -53,6 +66,12 @@ function render() {
   } else {
     appWrapper.classList.remove('with-sidebar');
     sidebar.innerHTML = '';
+  }
+
+  const _phaseKey = `${currentState.phase}:${currentState.roundPhase || ''}`;
+  if (_phaseKey !== _prevPhaseKey) {
+    _onPhaseChange(_prevPhaseKey, _phaseKey);
+    _prevPhaseKey = _phaseKey;
   }
 
   switch (currentState.phase) {
@@ -91,12 +110,14 @@ function render() {
         playKey = (s.isVibeman || s.isSpectator)
           ? `playing:guessing:observer:${s.totalGuessers}`
           : `playing:guessing:${s.hasSubmittedGuess ? 'post' : 'pre'}`;
-      } else if (s.roundPhase === 'round-results' && s.isSpectator) {
-        playKey = 'playing:round-results:spectator';
+      } else if (s.roundPhase === 'round-results') {
+        playKey = 'playing:round-results';
       }
       if (playKey && lastRenderKey === playKey) {
         if (s.roundPhase === 'guessing') {
           (s.isVibeman || s.isSpectator) ? patchVibeManWaiting() : patchGuesserGuessing();
+        } else if (s.roundPhase === 'round-results') {
+          patchResults();
         }
         // vibe-writing: static screen, skip re-render
       } else {

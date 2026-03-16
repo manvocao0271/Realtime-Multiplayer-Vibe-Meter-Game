@@ -151,6 +151,7 @@ function attachPhraseListeners() {
     const label2 = l2?.value.trim();
     if (!label1 || !label2) return showToast('Both phrases are required.', 'error');
     if (label1.toLowerCase() === label2.toLowerCase()) return showToast('Phrases must be different.', 'error');
+    playSound('submit');
     socket.emit('phrase', { label1, label2 });
     saved.label1 = '';
     saved.label2 = '';
