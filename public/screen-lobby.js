@@ -61,6 +61,7 @@ function attachLobbyListeners() {
   let selectedGoal = 25;
   document.querySelectorAll('.goal-btn').forEach(btn => {
     btn.addEventListener('click', () => {
+      playSound('click');
       selectedGoal = Number(btn.dataset.goal);
       document.querySelectorAll('.goal-btn').forEach(b => {
         b.classList.toggle('btn-primary', b === btn);
@@ -69,10 +70,12 @@ function attachLobbyListeners() {
     });
   });
   document.getElementById('start-btn')?.addEventListener('click', () => {
+    playSound('submit');
     socket.emit('start', { pointsGoal: selectedGoal });
   });
   const copyBtn = document.getElementById('copy-link-btn');
   copyBtn?.addEventListener('click', () => {
+    playSound('click');
     navigator.clipboard.writeText(window.location.href).then(() => {
       if (copyBtn) { copyBtn.textContent = 'Copied!'; setTimeout(() => { if (copyBtn) copyBtn.textContent = 'Copy'; }, 2000); }
     });

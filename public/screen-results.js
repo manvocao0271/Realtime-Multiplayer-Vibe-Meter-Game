@@ -103,6 +103,7 @@ function renderResults() {
   const myResult = results.find(r => r.id === currentState.myId);
   if (myResult && (myResult.pts >= 7 || (myResult.extremeGuess && myResult.pts >= 4))) {
     setTimeout(launchConfetti, 100);
+    setTimeout(() => playSound('bullseye'), 100);
   }
 
   return `
@@ -158,7 +159,7 @@ function renderResults() {
             <button class="btn ${s.roundResultsFast ? 'btn-secondary' : 'btn-primary'}" id="speed-up-next-round-btn"
                     ${s.roundResultsFast ? 'disabled' : ''}
                     style="padding:0.35rem 0.7rem;font-size:0.78rem;">
-              ${s.roundResultsFast ? '2x Enabled' : '2x Speed'}
+              ${s.roundResultsFast ? '4x Enabled' : '4x Speed'}
             </button>
           ` : ''}
         </div>
@@ -175,7 +176,31 @@ function attachResultsListeners() {
   if (!btn) return;
   btn.addEventListener('click', () => {
     btn.setAttribute('disabled', 'true');
-    btn.textContent = '2x Enabled';
+    btn.textContent = '4x Enabled';
+    playSound('click');
     socket.emit('speed-up-next-round');
   });
+}
+
+function patchResults() {
+  const s = currentState;
+  // Sync button state when server confirms fast mode
+  if (s.roundResultsFast) {
+    const btn = document.getElementById('speed-up-next-round-btn');
+    if (btn) {
+      btn.setAttribute('disabled', 'true');
+      btn.textContent = '4x Enabled';
+      btn.classList.remove('btn-primary');
+      btn.classList.add('btn-secondary');
+    }
+  }
+  // Reset the CSS animation so it restarts from the correct position
+  // with the new deadline before handing off to startResultsCountdown
+  const bar = document.getElementById('results-timer-bar');
+  if (bar) {
+    bar.style.animationName = 'none';
+    void bar.offsetWidth; // force reflow
+    bar.style.animationName = '';
+  }
+  startResultsCountdown();
 }

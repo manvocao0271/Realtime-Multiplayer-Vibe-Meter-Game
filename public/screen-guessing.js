@@ -62,7 +62,9 @@ function updateMiniDial(playerId, value, submitted) {
   if (fill)   { fill.style.strokeDashoffset = dashOffset; }
   if (label)  { label.textContent = value; }
 
+  const wasSubmitted = card.classList.contains('mini-dial-submitted');
   card.classList.toggle('mini-dial-submitted', !!submitted);
+  if (submitted && !wasSubmitted) playSound('playerLock');
   card.classList.toggle('mini-dial-waiting', value == null);
 }
 
@@ -294,6 +296,7 @@ function attachGuessListeners() {
 
   svg.addEventListener('mousedown', (e) => {
     dragging = true;
+    playSound('click');
     svg.style.cursor = 'grabbing';
     handleMove(e.clientX, e.clientY);
     e.preventDefault();
@@ -310,6 +313,7 @@ function attachGuessListeners() {
 
   svg.addEventListener('touchstart', (e) => {
     dragging = true;
+    playSound('click');
     const t = e.touches[0];
     handleMove(t.clientX, t.clientY);
     e.preventDefault();
@@ -325,6 +329,7 @@ function attachGuessListeners() {
   window.addEventListener('touchend', () => { dragging = false; });
 
   btn.addEventListener('click', () => {
+    playSound('lockIn');
     socket.emit('guess', { value: saved.guessValue });
   });
 }

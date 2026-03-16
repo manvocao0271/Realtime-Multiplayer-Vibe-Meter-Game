@@ -20,16 +20,13 @@ function renderJoin() {
             <div class="divider" style="margin:1rem 0;"></div>
 
             <div class="form-group">
-              <label for="room-code-input">Join Lobby Code</label>
+              <label for="room-code-input">Paste Lobby Code</label>
               <input type="text" id="room-code-input" placeholder="ABCD" maxlength="4"
                      autocomplete="off" autocorrect="off" spellcheck="false" />
             </div>
             <button class="btn btn-secondary btn-full" id="join-room-btn" style="margin-top:0.75rem;">
               Join Lobby
             </button>
-            <p style="font-size:0.8rem;margin-top:0.75rem;text-align:center;">
-              Or open a direct link like <strong>/ABCD</strong>.
-            </p>
           </div>
         </div>
       </div>

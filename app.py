@@ -521,7 +521,7 @@ def start_guess_timer(code: str) -> None:
     socketio.start_background_task(_run)
 
 
-def _start_advance_task(code: str, token: object, delay_seconds: float) -> None:
+def _start_advance_task(code: str, token: object, delay_seconds: int) -> None:
     """Launch the background task that advances or ends the game after the results timer."""
     def _run() -> None:
         socketio.sleep(delay_seconds)
@@ -1030,8 +1030,8 @@ def on_speed_up_next_round():
     now_ms = int(time.time() * 1000)
     deadline = game.round_results_deadline or now_ms
     remaining_ms = max(0, deadline - now_ms)
-    # Speed up by 2x from the current moment by halving remaining time.
-    new_remaining_ms = max(1000, remaining_ms // 2)
+    # Speed up by 4x from the current moment by quartering remaining time.
+    new_remaining_ms = max(1000, remaining_ms // 4)
     new_remaining_seconds = max(1, math.ceil(new_remaining_ms / 1000))
 
     game.round_results_fast = True

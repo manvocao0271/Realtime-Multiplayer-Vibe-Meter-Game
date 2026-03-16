@@ -64,6 +64,7 @@ function renderGameOver() {
 function attachGameOverListeners() {
   document.getElementById('restart-btn')?.addEventListener('click', () => {
     if (confirm('Start a new game? All scores will reset.')) {
+      playSound('click');
       socket.emit('restart');
     }
   });

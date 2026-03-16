@@ -82,6 +82,7 @@ function renderWaitForPhraseSelect() {
 function attachPhraseSelectListeners() {
   document.querySelectorAll('.phrase-pick-btn').forEach(btn => {
     btn.addEventListener('click', () => {
+      playSound('submit');
       socket.emit('select-phrase', { phraseId: Number(btn.dataset.phraseId) });
     });
   });
@@ -166,6 +167,7 @@ function attachStoryListeners() {
   btn?.addEventListener('click', () => {
     const story = ta?.value.trim();
     if (!story) return showToast('Write your story first!', 'error');
+    playSound('submit');
     socket.emit('story', { story });
     saved.story = '';
   });
