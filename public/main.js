@@ -119,7 +119,7 @@ function render() {
       const s = currentState;
       let playKey = null;
       if (s.roundPhase === 'vibe-writing' && !s.isVibeman && !s.isSpectator) {
-        playKey = 'playing:vibe-writing';
+        playKey = 'playing:guessing:pre';
       } else if (s.roundPhase === 'guessing') {
         playKey = (s.isVibeman || s.isSpectator)
           ? `playing:guessing:observer:${s.totalGuessers}`
@@ -129,7 +129,13 @@ function render() {
       }
       if (playKey && lastRenderKey === playKey) {
         if (s.roundPhase === 'guessing') {
-          (s.isVibeman || s.isSpectator) ? patchVibeManWaiting() : patchGuesserGuessing();
+          if (s.isVibeman || s.isSpectator) {
+            patchVibeManWaiting();
+          } else {
+            app.querySelector('[data-screen="vibe-waiting"]')
+              ? patchVibeWritingToGuessing()
+              : patchGuesserGuessing();
+          }
         } else if (s.roundPhase === 'round-results') {
           patchResults();
         }

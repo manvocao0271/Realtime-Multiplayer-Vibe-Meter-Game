@@ -2,6 +2,8 @@
 //  SCREEN: Guessing (guesser's interactive dial + post-submit)
 // ============================================================
 
+let _waitingAnimCancel = false;
+
 // -- Mini-dial card (shared by vibe-man waiting + post-submit) --
 function renderMiniDialCard(p, knownMap) {
   const CX = 100, CY = 100, R = 82;
@@ -119,7 +121,7 @@ function renderGuessing() {
   // -- Waiting for vibe man to write --
   if (isWaiting) {
     return `
-      <div class="fade-in">
+      <div class="fade-in" data-screen="vibe-waiting">
         ${renderVibeManBanner(s)}
         ${_tipHTML(_currentRoundTip)}
         <div class="card" style="margin-top:1rem;text-align:center;padding:1.75rem 1.5rem 1.25rem;">
@@ -184,7 +186,7 @@ function renderGuessing() {
       <div class="card highlight" style="margin-top:1rem;">
         <div class="section-title">The Vibe Story from ${esc(s.vibeManName)}</div>
         <div class="story-box" style="margin-bottom:1rem;">${esc(s.story)}</div>
-        <div class="section-title">What number is this vibe?</div>
+        <div class="section-title" style="margin-top:5rem;">What number is this vibe?</div>
         ${dialSVG}
         <button class="btn btn-success btn-full btn-lg" id="guess-submit-btn" style="margin-top:1rem;">
           Lock In My Guess
@@ -199,6 +201,65 @@ function renderGuessing() {
     </div>`;
 }
 
+function patchVibeWritingToGuessing() {
+  const s = currentState;
+  const app = document.getElementById('app');
+  if (!app) return;
+
+  _waitingAnimCancel = true;
+
+  const outer = app.querySelector('[data-screen="vibe-waiting"]');
+  if (outer) outer.removeAttribute('data-screen');
+
+  // Find the main card (the one that contains the dial)
+  const card = app.querySelector('#dial-svg')?.closest('.card');
+  if (!card) { renderPlaying(app); return; }
+
+  // Remove waiting icon and h3
+  card.querySelector('div[style*="font-size:3rem"]')?.remove();
+  card.querySelector('h3')?.remove();
+
+  // Update card style (strip text-align + padding, add highlight)
+  card.classList.add('highlight');
+  card.style.cssText = 'margin-top:1rem;';
+
+  // Insert story content before dial-wrap
+  const dialWrap = card.querySelector('.dial-wrap');
+  if (dialWrap) {
+    dialWrap.insertAdjacentHTML('beforebegin', `
+      <div class="section-title">The Vibe Story from ${esc(s.vibeManName)}</div>
+      <div class="story-box">${esc(s.story)}</div>
+      <div class="section-title" style="margin-top:1.75rem;">What number is this vibe?</div>
+    `);
+    dialWrap.insertAdjacentHTML('beforeend',
+      `<div class="dial-readout" id="guess-display">${saved.guessValue}</div>`);
+  }
+
+  // Make SVG interactive cursor
+  const svg = app.querySelector('#dial-svg');
+  if (svg) svg.style.cursor = 'grab';
+
+  // Add submit button inside card
+  card.insertAdjacentHTML('beforeend', `
+    <button class="btn btn-success btn-full btn-lg" id="guess-submit-btn" style="margin-top:1rem;">
+      Lock In My Guess
+    </button>
+  `);
+
+  // Add countdown callout after the card
+  card.insertAdjacentHTML('afterend', `
+    <div class="callout callout-info" style="text-align:center;padding:0.85rem 1rem;margin-top:1rem;margin-bottom:1rem;">
+      <p id="guess-timer-secs" style="font-size:0.9rem;margin-bottom:0.6rem;">15 seconds...</p>
+      <div class="countdown-bar-wrap">
+        <div class="countdown-bar-15" id="guess-timer-bar"></div>
+      </div>
+    </div>
+  `);
+
+  // Start interactive dial and countdown
+  attachGuessListeners();
+}
+
 function attachGuessListeners() {
   const s = currentState;
 
@@ -210,8 +271,9 @@ function attachGuessListeners() {
     if (fill) { fill.style.strokeDasharray = '408.41'; fill.style.strokeDashoffset = '0'; }
     const CX = 150, CY = 150, R = 112, T = 4000;
     const startTs = performance.now();
+    _waitingAnimCancel = false;
     function tick(ts) {
-      if (!document.getElementById('dial-needle')) return;
+      if (_waitingAnimCancel || !document.getElementById('dial-needle')) return;
       const elapsed = ts - startTs;
       const angle = (Math.PI / 2) * (1 + Math.cos((2 * Math.PI * elapsed) / T));
       needle.setAttribute('x2', (CX + R * Math.cos(angle)).toFixed(2));

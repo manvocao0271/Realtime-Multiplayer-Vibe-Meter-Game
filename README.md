@@ -8,47 +8,51 @@ A real-time multiplayer party game where one player writes a "vibe story" — a 
 
 ### Setup
 1. Run the server and visit `http://localhost:3000`.
-2. Choose **Create Lobby** to generate a unique 4-letter room code (e.g. `ABCD`), or enter a friend's 4-letter code to join.
+2. Choose **Create Lobby** to generate a unique 4-letter room code (e.g. `ABCD`), or enter a friend's code to join.
 3. You can also open a room URL directly (e.g. `http://localhost:3000/ABCD`).
-4. After creating or selecting a room, enter your name to join/spectate.
-5. Share that room URL with friends — they join by opening the same link.
+4. Enter your name to join as a player, or spectate.
+5. Share the room URL with friends — they join by opening the same link.
 6. The **first player to join** becomes the host.
 7. The host picks a **points goal** (25, 50, or 75) and clicks *Start Game*.
-8. Every player enters a pair of **polar-opposite phrases** (e.g. *"morning person"* vs *"night owl"*, *"totally sober"* vs *"blackout drunk"*). These become the scoring scales for the rounds.
+8. Every player enters a pair of **polar-opposite phrases** (e.g. *"morning person"* vs *"night owl"*). These become the scoring scales for the rounds.
 
 ### Gameplay Loop
 
 Rounds rotate until a player reaches the points goal:
 
-1. **Vibe Man assigned** — players rotate through the role. The Vibe Man is secretly given a random integer 1–100, where 1 is the left phrase and 100 is the right.
-2. **Phrase select** — the Vibe Man picks a phrase from the pool (phrases they've already used are tracked and reset automatically when all are exhausted).
-3. **Write a story** — the Vibe Man writes a short story that captures the feeling of their secret number on the chosen spectrum, without mentioning the number.
-4. **Guessing** — all other players drag an interactive semicircular dial to a number and lock in their guess. The timer (15–30 s, scaled to story length) auto-submits the last drag position on expiry.
-5. **Scoring:**
-
-   | Diff from true value | Guesser points | Vibe Man points |
-   |----------------------|----------------|-----------------|
-   | Exact (0)            | **7 pts**      | ⌈avg of all guessers' pts⌉ |
-   | ≤ 5                  | 3 pts          | same |
-   | ≤ 7                  | 2 pts          | same |
-   | ≤ 9                  | 1 pt           | same |
-   | > 9                  | 0 pts          | same |
-
-   The Vibe Man earns the **ceiling of the average guessers' score** — good writing benefits everyone.
-
-   **🔥 Extreme Zone (guesses 1–5 or 96–100):** Betting on an extreme is all-or-nothing.
-   - True value **also in the zone** → **14 pts** for a direct hit, **6 pts** for any other in-zone guess
-   - True value **outside the zone** → **0 pts**, regardless of proximity
-
-6. Results show every player's guess overlaid on the spectrum dial. The leaderboard updates with points earned this round.
-7. **Phrase suggestion voting (all playing phases):**
-         - Any connected player can suggest a new opposite phrase pair (left vs right).
-         - Any connected player can vote each pending suggestion with **✓** (add) or **✗** (reject) at any time while the game is in `playing`.
-         - Final decisions are only resolved at the **end of each round-results timer**:
-                 - ✓ votes >= half of connected players -> phrase is added for next round.
-                 - ✗ votes >= half of connected players -> phrase is rejected.
-                 - Tie (✓ == ✗) -> phrase stays pending, and all existing votes persist into later rounds.
+1. **Vibe Man assigned** — players rotate through the role. The Vibe Man receives a random integer 1–100, where 1 is the left phrase and 100 is the right.
+2. **Phrase select** — the Vibe Man picks a phrase pair from the pool. Phrases they've already used are tracked and reset automatically when all are exhausted.
+3. **Write a story** — the Vibe Man writes a short story capturing the feeling of their secret number on the chosen spectrum, without mentioning the number.
+4. **Guessing** — all other players drag an interactive semicircular dial to a number and lock in their guess. The timer (15–30 s, scaled to story length) auto-submits on expiry.
+5. **Scoring** — see table below.
+6. **Results** — every player's guess is overlaid on the spectrum dial. The leaderboard updates with points earned this round.
+7. **Phrase suggestions** — any connected player can suggest a new opposite phrase pair and vote on pending suggestions at any time during `playing`. Votes resolve at the end of each round-results timer.
 8. Play continues, rotating the Vibe Man, until a player hits the goal.
+
+### Scoring
+
+| Diff from true value | Guesser points |
+|----------------------|----------------|
+| Exact (0)            | **7 pts**      |
+| ≤ 5                  | 3 pts          |
+| ≤ 7                  | 2 pts          |
+| ≤ 9                  | 1 pt           |
+| > 9                  | 0 pts          |
+
+The **Vibe Man earns the ceiling of the average guessers' score** — good writing benefits everyone.
+
+**🔥 Extreme Zone (guesses 1–5 or 96–100):** Betting on an extreme is all-or-nothing.
+- True value **also in the zone** → **14 pts** for a direct hit, **6 pts** for any other in-zone guess.
+- True value **outside the zone** → **0 pts**, regardless of proximity.
+
+### Phrase Suggestion Voting
+
+- Any connected player can suggest a new opposite phrase pair during the `playing` phase.
+- Any connected player can vote each pending suggestion **✓** (add) or **✗** (reject) at any time.
+- Votes resolve at the **end of each round-results timer**:
+  - ✓ votes ≥ half of connected players → phrase added.
+  - ✗ votes ≥ half of connected players → phrase rejected.
+  - Tie (✓ == ✗) → phrase stays pending; all votes persist into later rounds.
 
 ---
 
@@ -56,31 +60,31 @@ Rounds rotate until a player reaches the points goal:
 
 ```bash
 pip install -r requirements.txt
-python app.py   # →  http://localhost:3000
+python app.py   # → http://localhost:3000
 ```
 
-Visit `http://localhost:3000` and choose **Create Lobby** or **Join Lobby**. Share `http://<your-local-ip>:3000` with anyone on the same Wi-Fi so they can create or join rooms.
+Visit `http://localhost:3000` and choose **Create Lobby** or **Join Lobby**. Share `http://<your-local-ip>:3000` with anyone on the same Wi-Fi.
 
 ### Exposing via Cloudflare Tunnel (for remote players)
 
-Open a **second terminal** and run:
+Open a second terminal and run:
 
 ```bash
 cloudflared tunnel --url localhost:3000
 ```
 
-Cloudflare will print a public `https://` URL. Share the full room URL (e.g. `https://<tunnel>.trycloudflare.com/ABCD`) with anyone, anywhere.
+Cloudflare prints a public `https://` URL. Share the full room URL (e.g. `https://<tunnel>.trycloudflare.com/ABCD`) with anyone, anywhere.
 
 | Terminal | Command | Purpose |
 |----------|---------|---------|
-| 1 | `python app.py` | Start the Python game server on `localhost:3000` |
-| 2 | `cloudflared tunnel --url localhost:3000` | Expose the server publicly via Cloudflare Tunnel |
+| 1 | `python app.py` | Start the game server on `localhost:3000` |
+| 2 | `cloudflared tunnel --url localhost:3000` | Expose publicly via Cloudflare Tunnel |
 
 **Stack:** Python · Flask · Flask-SocketIO · gevent (WebSockets)
 
 ---
 
-## Current Architecture
+## Architecture
 
 The backend is a **single-process Python monolith** supporting multiple concurrent rooms:
 
@@ -91,18 +95,15 @@ Browser (Socket.IO client)
         ▼
   Python / Flask + Flask-SocketIO (gevent)
   ┌──────────────────────────────────────────────────┐
-  │  Player  ◄──  ActivePlayer                       │
-  │          ◄──  SpectatorPlayer                    │
-  │                                                  │
   │  rooms: dict[str, VibeMeterGame]                 │
-  │    ABCDEF → VibeMeterGame  (phases & scoring)    │
-  │    XYZW12 → VibeMeterGame                        │
+  │    ABCD → VibeMeterGame  (phases & scoring)      │
+  │    XYZW → VibeMeterGame                          │
   │    …                                             │
   │  Socket event handlers                           │
   └──────────────────────────────────────────────────┘
 ```
 
-Game state lives in per-room `VibeMeterGame` instances stored in a `rooms` dict keyed by 6-character room codes. Every Socket.IO event mutates the relevant instance and calls `broadcast(code)`, which rebuilds a personalised state snapshot for each connected socket in that room and pushes it out simultaneously.
+Game state lives in per-room `VibeMeterGame` instances stored in a `rooms` dict keyed by 4-character room codes. Every Socket.IO event mutates the relevant instance and calls `broadcast(code)`, which rebuilds a personalised state snapshot for each connected socket and pushes it simultaneously.
 
 This is intentionally minimal — no database, no authentication, no persistence between sessions.
 
@@ -110,7 +111,7 @@ This is intentionally minimal — no database, no authentication, no persistence
 
 ```
 Player  (base — name, sid, score, is_host)
-├── ActivePlayer   — has vibe-man rotation slot, guess state, phrase history
+├── ActivePlayer    — has vibe-man rotation slot, guess state, phrase history
 └── SpectatorPlayer — observer; submits a phrase to the pending queue;
                       promoted to ActivePlayer at the start of the next round
 ```
@@ -120,21 +121,19 @@ Player  (base — name, sid, score, is_host)
 ```
 lobby ──► phrase-input ──► playing ──► game-over
                                │
-              ┌────────────────┴────────────────────────────┐
-              │                  roundPhase                 │
-              │                                             │
+                           roundPhase:                                 
          phrase-select ──► vibe-writing ──► guessing ──► round-results
-              ▲                                             │
-              └──────────── (next round) ───────────────────┘
-                            (loops until points goal reached)
+              ▲                                           │
+              └──────────── (next round) ─────────────────┘
+                           (loops until points goal reached)
 ```
 
 ### Multi-Room Layout
 
 ```
 rooms: dict[str, VibeMeterGame]
-  ABCDEF → VibeMeterGame   (players, phase, round state …)
-  XYZW12 → VibeMeterGame
+  ABCD → VibeMeterGame   (players, phase, round state …)
+  XYZW → VibeMeterGame
   …
 
 sid_to_room: dict[str, str]   ← reverse index for O(1) disconnect lookup
@@ -159,142 +158,3 @@ build_state(sid)          ← personalises snapshot (isVibeman, hasSubmittedGues
         ▼
 emit('state', snapshot)   → browser
 ```
-
-### Background Task Pattern (Token Cancellation)
-
-Background tasks (scaled guess timer, round-advance delay, room cleanup) are launched with `socketio.start_background_task()`. Cancellation is done without threading primitives:
-
-```python
-self._guess_token = object()      # create a new token
-token = self._guess_token         # capture by reference
-
-def task():
-    socketio.sleep(duration)
-    if token is not self._guess_token:   # token replaced → stale, bail out
-        return
-    # … advance phase …
-
-socketio.start_background_task(task)
-```
-
-Replacing `self._guess_token` (e.g. when a new round starts) silently invalidates any pending task.
-
-The advance-to-next-round logic (shared between the normal 10 s results timer and the host-triggered 2× speed-up) is extracted into a single `_start_advance_task(code, token, delay_seconds)` helper to avoid duplicating the `_run` closure.
-
-### Client Render Pipeline
-
-```
-socket 'state' event
-        │
-        ▼
-currentState = data
-render()
-        │
-    phase switch
-    ├── lobby         → renderLobby()         + attachLobbyListeners()
-    ├── phrase-input  → renderPhraseInput()   + attachPhraseListeners()
-    ├── playing       → renderPlaying()
-    │     └── roundPhase switch
-    │           ├── phrase-select  → renderPhraseSelect()  /  renderWaitForPhraseSelect()
-    │           ├── vibe-writing   → renderVibeManWrite()  /  renderGuessing() [isWaiting branch]
-    │           ├── guessing       → renderVibeManWaiting() / renderGuessing() [pre/post-submit branch]
-    │           └── round-results  → renderResults()
-    └── game-over     → renderGameOver()      + attachGameOverListeners()
-```
-
-`renderGuessing()` has three branches keyed by `roundPhase` and `hasSubmittedGuess`:
-
-| Branch | Condition | Dial behaviour |
-|--------|-----------|----------------|
-| **isWaiting** | `roundPhase === 'vibe-writing'` | Needle oscillates via `requestAnimationFrame`; no interaction |
-| **pre-submit** | guessing phase, guess not yet locked | Interactive drag/click dial in a unified card with the vibe story |
-| **post-submit** | guessing phase, guess locked in | Dial removed; story-only card + mini-dial live dashboard |
-
-Each branch shows the same **tip card** (`_currentRoundTip`) — one tip is picked per round via a shuffled-deck cycle and held constant until `renderResults()` resets it.
-
-## Planned Distributed Systems Integration
-
-The goal of this project is to evolve the above monolith into a reference implementation for full-scale distributed systems patterns. The planned layers are:
-
-### 1. Stateless Horizontally-Scaled API Servers
-Replace the single process with **N identical, stateless Node.js instances** behind a load balancer (e.g. NGINX or an AWS ALB). No instance owns state; they are all equal workers.
-
-### 2. Shared State with Redis
-Move the in-memory `game` object into **Redis** (hash / sorted-set structures). All server instances read and write the same authoritative state. Redis also acts as the **Socket.IO adapter** (via `@socket.io/redis-adapter`) so that a `broadcast()` from one instance fans out to sockets connected to any other instance.
-
-```
-Load Balancer (sticky or stateless)
-     │
-  ┌──┴──┐   ┌─────┐   ┌─────┐
-  │ App │   │ App │   │ App │   ← N stateless Node.js workers
-  └──┬──┘   └──┬──┘   └──┬──┘
-     └─────────┼─────────┘
-               │
-         ┌─────▼──────┐
-         │    Redis   │  ← shared game state + pub/sub fan-out
-         └────────────┘
-```
-
-### 3. Event-Driven Backbone with a Message Queue
-Game lifecycle events (`round_started`, `story_submitted`, `round_resolved`) are published to **Kafka** (or RabbitMQ). Downstream consumers can:
-- Persist results to a **PostgreSQL** database for historical leaderboards.
-- Trigger analytics or anti-cheat pipelines asynchronously without blocking the request path.
-
-### 4. Service Decomposition
-Break the single `server.js` into independently deployable services:
-
-| Service | Responsibility |
-|---------|---------------|
-| **Gateway** | WebSocket handshake, auth, rate-limiting |
-| **Game Service** | Phase transitions, scoring logic |
-| **State Service** | Redis read/write abstraction |
-| **Notification Service** | Fan-out broadcasts via Socket.IO adapter |
-| **Persistence Service** | Kafka consumer → Postgres writes |
-
-### 5. Observability
-- **Distributed tracing** (OpenTelemetry + Jaeger) across service boundaries.
-- **Metrics** (Prometheus + Grafana) for active games, event throughput, latency percentiles.
-- **Structured logging** (Pino → stdout → Loki/ELK) with correlation IDs per game session.
-
-### 6. Resilience Patterns
-- **Circuit breakers** between the game service and Redis/Kafka to avoid cascading failures.
-- **Graceful disconnect handling** — basic reconnect is fully implemented (host migration, guesser drop, same-name session restore with score intact); to be hardened with a Redis-backed session-recovery handshake so reconnects survive server restarts or cross-instance hops.
-- **Leader election** for the host role using a distributed lock (Redis `SET NX`) so host state survives the original socket disconnecting.
-
----
-
-## Roadmap
-
-### Completed
-- [x] Core game loop (lobby → phrase input → phrase select → vibe writing → guessing → scoring)
-- [x] Points goal selector in lobby (25, 50, or 75 pts)
-- [x] Vibe Man phrase-select screen with per-player phrase-usage tracking and auto-reset
-- [x] 15–30 s scaled guess countdown with auto-resolve on expiry
-- [x] Vibe Man scoring (earns ⌈avg guessers' pts⌉ each round)
-- [x] Extreme zone scoring (1–5 / 96–100: all-or-nothing, up to 14 pts)
-- [x] Bullseye tracking (≤ 5 away scores counted and shown per player in leaderboard)
-- [x] Host management and host-migration on disconnect
-- [x] Disconnect edge-case handling (vibe-man skip, guesser drop, lobby cleanup)
-- [x] Player reconnection — same-name rejoin restores score, rotation slot, and phrase history
-- [x] Spectator / late-joiner system with pending-player queue
-- [x] Real-time live drag-position streaming to Vibe Man and submitted guessers
-- [x] Interactive SVG dial with mouse and touch support
-- [x] Mini-dial dashboard during the guessing phase
-- [x] Unified guessing screen — oscillating locked dial during vibe-writing, interactive dial + story pre-submit, story-only post-submit
-- [x] Tip system — one shuffled-deck tip per round, shown across all waiting/guessing states
-- [x] In-place DOM patching (no flicker while typing or during live guessing)
-- [x] Leaderboard sidebar — 260 px, centered flex layout, consistent font sizing
-- [x] Visual results dial — player guesses overlaid on the spectrum in a unified card with the story
-- [x] Restart / Play Again flow from game-over screen
-- [x] Name persistence via `localStorage` (capped at 10 characters)
-- [x] XSS-safe HTML escaping throughout the client
-- [x] Code quality pass — shared JS utilities extracted (`buildDialTicks`, `buildKnownMap`, `miniColCount`); duplicated round-advance closure unified into `_start_advance_task`; dead client code removed; `scaleY` viewBox bug fixed in guessing dial
-- [x] Points goal display consolidated to leaderboard sidebar header only
-
-### Upcoming
-- [ ] Redis shared-state layer + Socket.IO Redis adapter
-- [ ] Kafka event bus + PostgreSQL persistence
-- [ ] Service decomposition and containerisation (Docker Compose)
-- [ ] Kubernetes deployment manifests
-- [ ] OpenTelemetry tracing and Prometheus metrics
-- [ ] Auth / room codes so multiple games can run in parallel

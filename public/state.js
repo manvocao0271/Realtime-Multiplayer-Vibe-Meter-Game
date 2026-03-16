@@ -76,8 +76,6 @@ function startResultsCountdown() {
 
   function tick() {
     const secs = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
-    const el = document.getElementById('results-next-round-secs');
-    if (el) el.textContent = secs === 1 ? '1 second' : `${secs} seconds`;
     if (secs === 0) {
       clearInterval(resultsCountdownInterval);
       resultsCountdownInterval = null;
