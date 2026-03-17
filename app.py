@@ -553,7 +553,7 @@ def _schedule_advance(code: str) -> None:
     game.round_results_duration = delay_seconds
     game.round_results_deadline = int(time.time() * 1000 + delay_seconds * 1000)
     game.round_results_fast = False
-    _start_advance_task(code, game._advance_token, delay_seconds)
+    _start_advance_task(code, game._advance_token, int(delay_seconds))
 
 
 def resolve_and_advance(code: str) -> None:
@@ -1185,8 +1185,7 @@ PORT = int(os.environ.get('PORT', 3000))
 
 if __name__ == '__main__':
     socketio.start_background_task(_cleanup_rooms)
-    print(f'\n\U0001f3ae  Vibe Meter is running!')
-    print(f'   \u279c  http://localhost:{PORT}')
+    print(f'\n\U0001f3ae  Vibe Meter is running! \u279c  http://localhost:{PORT}\n')
     try:
         socketio.run(app, host='0.0.0.0', port=PORT)
     except KeyboardInterrupt:

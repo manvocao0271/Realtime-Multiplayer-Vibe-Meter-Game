@@ -79,6 +79,10 @@ p  { color: var(--text-muted); }
   min-height: 100vh;
 }
 
+#app-wrapper.post-phrase-stage #app {
+  padding-top: 3.5rem;
+}
+
 #app > *:first-child:last-child {
   min-height: 100%;
 }
@@ -101,6 +105,10 @@ p  { color: var(--text-muted); }
   padding: 1.65rem 0.5rem 2rem 0.5rem;
   flex-direction: column;
   align-items: center;
+}
+
+#app-wrapper.post-phrase-stage #leaderboard-sidebar {
+  padding-top: 3.5rem;
 }
 
 #app-wrapper.with-sidebar #leaderboard-sidebar {
@@ -843,10 +851,10 @@ textarea {
 
 /* Numeric readout — sits below the SVG in normal document flow */
 .dial-readout {
-  font-size: 7rem;
+  font-size: 4rem;
   font-weight: 900;
   line-height: 1;
-  margin-top: 0.6rem;
+  margin-top: 1rem;
   background: var(--grad-primary);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -1309,6 +1317,49 @@ textarea {
 .phase-hero .emoji-big { font-size: 3.5rem; display: block; margin-bottom: 0.5rem; }
 .phase-hero h2 { margin-bottom: 0.35rem; }
 .phase-hero p  { max-width: 520px; margin: 0 auto; }
+
+/* ── Phase Topline (Round + Vibe Man) ───────────────── */
+.phase-topline {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+  text-align: center;
+  margin-bottom: 1rem;
+}
+
+/* ── Phrase Select Row ─────────────────────────────── */
+.phrase-pick-btn { width: 100%; }
+
+.phrase-pick-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.phrase-pick-row .phrase-label-1,
+.phrase-pick-row .phrase-label-2 {
+  font-size: 1.15rem;
+}
+
+.phrase-pick-row .phrase-label-1 { text-align: right; }
+.phrase-pick-row .phrase-label-2 { text-align: left; }
+
+.phrase-pick-row .phrase-vs {
+  font-size: 1rem;
+  text-align: center;
+  min-width: 2.2rem;
+}
+
+.phrase-pick-by {
+  font-size: .75rem;
+  color: var(--text-dim);
+  text-align: center;
+  margin-bottom: -0.5rem;
+}
 
 /* ── Big Number ─────────────────────────────────────── */
 .big-number {

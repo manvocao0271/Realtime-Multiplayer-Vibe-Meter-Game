@@ -78,12 +78,18 @@ function render() {
   const sidebar    = document.getElementById('leaderboard-sidebar');
 
   if (!currentState || !currentState.myName) {
+    appWrapper.classList.remove('post-phrase-stage');
     appWrapper.classList.remove('with-sidebar');
     if (sidebar) sidebar.innerHTML = '';
     app.innerHTML = renderJoin();
     attachJoinListeners();
     return;
   }
+
+  appWrapper.classList.toggle(
+    'post-phrase-stage',
+    currentState.phase === 'playing' || currentState.phase === 'game-over'
+  );
 
   if (currentState.phase === 'playing') {
     appWrapper.classList.add('with-sidebar');

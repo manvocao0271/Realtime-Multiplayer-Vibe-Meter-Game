@@ -83,10 +83,10 @@ function renderPhraseSuggestionsPanel() {
 
   return `
     <div class="sp-panel">
-      <div class="sp-title">Next-Round Phrase Suggestions</div>
+      <div class="sp-title" style="text-align: center;">Next-Round Phrase Suggestions</div>
 
       <div class="sp-popover-wrapper">
-        <button class="btn btn-secondary btn-full sp-trigger" id="sp-popover-trigger">+ Suggest a Pair</button>
+        <button class="btn btn-secondary btn-full sp-trigger" id="sp-popover-trigger">+</button>
         <div class="sp-popover" id="sp-popover" hidden>
           <div id="sp-popover-form">
             <div class="sp-popover-header">Suggest opposite phrases</div>
