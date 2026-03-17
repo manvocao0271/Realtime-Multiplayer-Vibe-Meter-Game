@@ -17,6 +17,31 @@ socket.on('live-positions', (players) => {
   players.forEach(p => updateMiniDial(p.id, p.value, p.submitted));
 });
 
+// Targeted vote update — patches only the affected sp-item without a full re-render
+socket.on('suggestion-votes', (data) => {
+  // Keep currentState in sync so the next patchSidebar renders correct counts
+  const sug = currentState?.phraseSuggestions?.find(s => s.id === data.suggestionId);
+  if (sug) Object.assign(sug, {
+    yesVotes: data.yesVotes, noVotes: data.noVotes,
+    totalVoters: data.totalVoters, myVote: data.myVote,
+  });
+
+  const item = document.querySelector(`.sp-item[data-suggestion-id="${data.suggestionId}"]`);
+  if (!item) return;
+
+  const counts = item.querySelector('.sp-counts');
+  if (counts) {
+    counts.textContent = `• ✓ ${data.yesVotes} • ✗ ${data.noVotes} • voters ${data.totalVoters}`;
+    counts.classList.remove('sp-counts-flash');
+    // Force reflow so re-adding the class restarts the animation
+    void counts.offsetWidth;
+    counts.classList.add('sp-counts-flash');
+  }
+
+  item.querySelector('.sp-vote-btn.yes')?.classList.toggle('active', data.myVote === 'yes');
+  item.querySelector('.sp-vote-btn.no')?.classList.toggle('active',  data.myVote === 'no');
+});
+
 socket.on('reset', () => {
   currentState = null;
   render();
@@ -53,18 +78,24 @@ function render() {
   const sidebar    = document.getElementById('leaderboard-sidebar');
 
   if (!currentState || !currentState.myName) {
+    appWrapper.classList.remove('post-phrase-stage');
     appWrapper.classList.remove('with-sidebar');
-    sidebar.innerHTML = '';
+    if (sidebar) sidebar.innerHTML = '';
     app.innerHTML = renderJoin();
     attachJoinListeners();
     return;
   }
 
+  appWrapper.classList.toggle(
+    'post-phrase-stage',
+    currentState.phase === 'playing' || currentState.phase === 'game-over'
+  );
+
   if (currentState.phase === 'playing') {
     appWrapper.classList.add('with-sidebar');
     const sKey = `${currentState.phase}:${currentState.roundPhase || ''}`;
     if (_prevSidebarKey !== sKey) {
-      sidebar.innerHTML = renderLeaderboard();
+      if (sidebar) sidebar.innerHTML = renderLeaderboard();
       attachSidebarListeners();
       _prevSidebarKey = sKey;
     } else {
@@ -72,7 +103,7 @@ function render() {
     }
   } else {
     appWrapper.classList.remove('with-sidebar');
-    sidebar.innerHTML = '';
+    if (sidebar) sidebar.innerHTML = '';
     _prevSidebarKey = null;
   }
 

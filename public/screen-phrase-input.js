@@ -80,7 +80,7 @@ function renderPhraseInput() {
     <div class="phase-hero">
       <span class="emoji-big">&#9997;</span>
       <h2>Enter Your Two Phrases</h2>
-      <p>Think of two fun polar-opposite words or phrases that have a wide range.</p>
+      <p>Think of two fun polar-opposite phrases that have a wide range.</p>
     </div>
 
     ${s.hasSubmittedPhrase ? `

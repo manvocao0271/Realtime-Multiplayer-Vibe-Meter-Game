@@ -96,27 +96,14 @@ function renderGuessing() {
   const label2 = esc((s.currentPhrase?.label2 || '').slice(0, 20));
   const v = saved.guessValue;
 
-  const dialSVG = `
-    <div class="dial-wrap" style="margin:0.5rem 0 0;">
-      <svg class="dial-svg" id="dial-svg" viewBox="0 0 300 200" xmlns="http://www.w3.org/2000/svg"${isWaiting ? '' : ' style="cursor:grab;"'}>
-        <defs>
-          <linearGradient id="dialGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%"   stop-color="#10b981" />
-            <stop offset="50%"  stop-color="#a855f7" />
-            <stop offset="100%" stop-color="#ef4444" />
-          </linearGradient>
-        </defs>
-        <path class="dial-track" d="M 20,150 A 130,130 0 0,1 280,150" />
-        <path class="dial-fill" id="dial-fill" d="M 20,150 A 130,130 0 0,1 280,150"
-          style="stroke-dasharray:408.41;" />
-        ${buildDialTicks()}
-        <line class="dial-needle" id="dial-needle" x1="150" y1="150" x2="20" y2="150" />
-        <circle class="dial-pivot" cx="150" cy="150" r="10" />
-        <text x="20" y="190" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-weight="700" font-size="14" fill="#10b981">${label1}</text>
-        <text x="280" y="190" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-weight="700" font-size="14" fill="#ef4444">${label2}</text>
-      </svg>
-      ${isWaiting ? '' : `<div class="dial-readout" id="guess-display">${v}</div>`}
-    </div>`;
+  const dialSVG = renderMainDial({
+    value: v,
+    label1,
+    label2,
+    interactive: !isWaiting,
+    showReadout: !isWaiting,
+    wrapStyle: 'margin-top:1rem;',
+  });
 
   // -- Waiting for vibe man to write --
   if (isWaiting) {
@@ -124,9 +111,11 @@ function renderGuessing() {
       <div class="fade-in" data-screen="vibe-waiting">
         ${renderVibeManBanner(s)}
         ${_tipHTML(_currentRoundTip)}
-        <div class="card" style="margin-top:1rem;text-align:center;padding:1.75rem 1.5rem 1.25rem;">
-          <div style="font-size:3rem;margin-bottom:0.5rem;">&#128161;</div>
-          <h3 style="margin-bottom:1rem;"><span class="waiting-pulse"></span> ${esc(s.vibeManName)} is writing their story...</h3>
+        <div class="card highlight" style="margin-top:1rem;">
+          <div class="waiting-story-slot" style="text-align:center;">
+            <div style="font-size:2.5rem;margin-bottom:0.4rem;">&#128161;</div>
+            <h3><span class="waiting-pulse"></span> ${esc(s.vibeManName)} is writing their story...</h3>
+          </div>
           ${dialSVG}
         </div>
       </div>`;
@@ -185,8 +174,7 @@ function renderGuessing() {
       ${_tipHTML(_currentRoundTip)}
       <div class="card highlight" style="margin-top:1rem;">
         <div class="section-title">The Vibe Story from ${esc(s.vibeManName)}</div>
-        <div class="story-box" style="margin-bottom:1rem;">${esc(s.story)}</div>
-        <div class="section-title" style="margin-top:5rem;">What number is this vibe?</div>
+        <div class="story-box" style="margin-top:0.5rem;">${esc(s.story)}</div>
         ${dialSVG}
         <button class="btn btn-success btn-full btn-lg" id="guess-submit-btn" style="margin-top:1rem;">
           Lock In My Guess
@@ -215,22 +203,19 @@ function patchVibeWritingToGuessing() {
   const card = app.querySelector('#dial-svg')?.closest('.card');
   if (!card) { renderPlaying(app); return; }
 
-  // Remove waiting icon and h3
-  card.querySelector('div[style*="font-size:3rem"]')?.remove();
-  card.querySelector('h3')?.remove();
+  // Replace waiting message with story content (same slot at top of card)
+  const storySlot = card.querySelector('.waiting-story-slot');
+  if (storySlot) {
+    storySlot.insertAdjacentHTML('beforebegin', `
+      <div class="section-title">The Vibe Story from ${esc(s.vibeManName)}</div>
+      <div class="story-box" style="margin-top:0.5rem;">${esc(s.story)}</div>
+    `);
+    storySlot.remove();
+  }
 
-  // Update card style (strip text-align + padding, add highlight)
-  card.classList.add('highlight');
-  card.style.cssText = 'margin-top:1rem;';
-
-  // Insert story content before dial-wrap
+  // Inject readout into dial-wrap
   const dialWrap = card.querySelector('.dial-wrap');
   if (dialWrap) {
-    dialWrap.insertAdjacentHTML('beforebegin', `
-      <div class="section-title">The Vibe Story from ${esc(s.vibeManName)}</div>
-      <div class="story-box">${esc(s.story)}</div>
-      <div class="section-title" style="margin-top:1.75rem;">What number is this vibe?</div>
-    `);
     dialWrap.insertAdjacentHTML('beforeend',
       `<div class="dial-readout" id="guess-display">${saved.guessValue}</div>`);
   }
@@ -239,8 +224,8 @@ function patchVibeWritingToGuessing() {
   const svg = app.querySelector('#dial-svg');
   if (svg) svg.style.cursor = 'grab';
 
-  // Add submit button inside card
-  card.insertAdjacentHTML('beforeend', `
+  // Add submit button after dial-wrap
+  dialWrap?.insertAdjacentHTML('afterend', `
     <button class="btn btn-success btn-full btn-lg" id="guess-submit-btn" style="margin-top:1rem;">
       Lock In My Guess
     </button>
@@ -262,24 +247,26 @@ function patchVibeWritingToGuessing() {
 
 function attachGuessListeners() {
   const s = currentState;
+  const needle = document.getElementById('dial-needle');
+  const fill = document.getElementById('dial-fill');
+  const display = document.getElementById('guess-display');
 
   // -- Waiting state: oscillating dial, no timer --
   if (s.roundPhase === 'vibe-writing') {
-    const needle = document.getElementById('dial-needle');
-    const fill   = document.getElementById('dial-fill');
     if (!needle) return;
-    if (fill) { fill.style.strokeDasharray = '408.41'; fill.style.strokeDashoffset = '0'; }
-    const CX = 150, CY = 150, R = 112, T = 4000;
+    const T = 4000;
     const startTs = performance.now();
     _waitingAnimCancel = false;
+
     function tick(ts) {
       if (_waitingAnimCancel || !document.getElementById('dial-needle')) return;
       const elapsed = ts - startTs;
-      const angle = (Math.PI / 2) * (1 + Math.cos((2 * Math.PI * elapsed) / T));
-      needle.setAttribute('x2', (CX + R * Math.cos(angle)).toFixed(2));
-      needle.setAttribute('y2', (CY - R * Math.sin(angle)).toFixed(2));
+      const sweep = (1 - Math.cos((2 * Math.PI * elapsed) / T)) / 2;
+      const value = Math.round(1 + sweep * 99);
+      setMainDialValue(value, { needle, fill, display });
       requestAnimationFrame(tick);
     }
+
     requestAnimationFrame(tick);
     return;
   }
@@ -287,37 +274,11 @@ function attachGuessListeners() {
   // -- Guessing state: interactive dial --
   startGuessCountdown();
   const svg     = document.getElementById('dial-svg');
-  const needle  = document.getElementById('dial-needle');
-  const fill    = document.getElementById('dial-fill');
-  const display = document.getElementById('guess-display');
   const btn     = document.getElementById('guess-submit-btn');
   if (!svg || !needle || !btn) return;
 
-  const CX = 150, CY = 150, R = 130;
-
-  function valueToAngle(val) {
-    return Math.PI - ((val - 1) / 99) * Math.PI;
-  }
-
-  function angleToValue(angle) {
-    const clamped = Math.max(0, Math.min(Math.PI, angle));
-    return Math.round(1 + ((Math.PI - clamped) / Math.PI) * 99);
-  }
-
   function updateDial(val) {
-    saved.guessValue = val;
-    if (display) display.textContent = val;
-
-    const angle = valueToAngle(val);
-    const nx = CX + (R - 18) * Math.cos(angle);
-    const ny = CY - (R - 18) * Math.sin(angle);
-    needle.setAttribute('x2', nx.toFixed(2));
-    needle.setAttribute('y2', ny.toFixed(2));
-
-    const ARC_LEN = Math.PI * R;
-    const fraction = (val - 1) / 99;
-    fill.style.strokeDasharray = ARC_LEN;
-    fill.style.strokeDashoffset = ARC_LEN * (1 - fraction);
+    saved.guessValue = setMainDialValue(val, { needle, fill, display });
 
     if (!updateDial._t) {
       updateDial._t = setTimeout(() => {
@@ -341,8 +302,8 @@ function attachGuessListeners() {
 
   function handleMove(clientX, clientY) {
     const pt = getSVGPoint(clientX, clientY);
-    const dx = pt.x - CX;
-    const dy = CY - pt.y;
+    const dx = pt.x - MAIN_DIAL.cx;
+    const dy = MAIN_DIAL.cy - pt.y;
 
     if (dy < 0) {
       updateDial(dx < 0 ? 1 : 100);
@@ -351,7 +312,7 @@ function attachGuessListeners() {
 
     const angle = Math.atan2(dy, dx);
     const clamped = Math.max(0, Math.min(Math.PI, angle));
-    updateDial(angleToValue(clamped));
+    updateDial(angleToDialValue(clamped));
   }
 
   let dragging = false;

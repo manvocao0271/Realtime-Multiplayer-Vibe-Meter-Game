@@ -4,14 +4,11 @@
 
 // -- Shared banner + phrase strip ----------------------------
 function renderVibeManBanner(s) {
+  const parts = [];
+  if (!s.isVibeman) parts.push(`Vibe Man: ${esc(s.vibeManName)}`);
+  parts.push(`Round ${s.roundNumber}`);
   return `
-    <div class="row" style="gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap;">
-      ${s.isVibeman
-        ? ''
-        : `<span class="badge badge-purple">Vibe Man: ${esc(s.vibeManName)}</span>`
-      }
-      <span class="badge badge-purple">Round ${s.roundNumber}</span>
-    </div>
+    <div class="phase-topline">${parts.join(' - ')}</div>
   `;
 }
 
@@ -51,11 +48,13 @@ function renderPhraseSelect() {
         <div class="stack-sm">
           ${(s.availablePhrases || []).map(ph => `
             <button class="btn btn-secondary phrase-pick-btn" data-phrase-id="${ph.id}"
-                    style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem;padding:0.75rem 1rem;text-align:left;">
-              <span class="phrase-label-1" style="font-size:1rem;">${esc(ph.label1)}</span>
-              <span class="phrase-vs">vs</span>
-              <span class="phrase-label-2" style="font-size:1rem;">${esc(ph.label2)}</span>
-              <span style="font-size:0.7rem;color:var(--text-dim);white-space:nowrap;margin-left:auto;">by ${esc(ph.byName)}</span>
+                    style="display:flex;flex-direction:column;gap:0.25rem;padding:0.85rem 1rem;text-align:left;">
+              <span class="phrase-pick-row">
+                <span class="phrase-label-1">${esc(ph.label1)}</span>
+                <span class="phrase-vs">vs</span>
+                <span class="phrase-label-2">${esc(ph.label2)}</span>
+              </span>
+              <span class="phrase-pick-by">by ${esc(ph.byName)}</span>
             </button>
           `).join('')}
         </div>

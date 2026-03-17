@@ -66,24 +66,31 @@ function startResultsCountdown() {
   if (!deadline) return;
 
   const bar = document.getElementById('results-timer-bar');
-  const total = Number(currentState?.roundResultsDuration || 10);
-  const remainingAtRender = Math.max(0, (deadline - Date.now()) / 1000);
-  const elapsed = Math.max(0, total - remainingAtRender);
-  if (bar) {
-    bar.style.animationDuration = `${Math.max(0.2, total)}s`;
-    bar.style.animationDelay = `-${elapsed}s`;
+  if (!bar) return;
+
+  const remainingMs = Math.max(0, deadline - Date.now());
+
+  // Determine start percentage.
+  // Without fast-forward: compute from remaining / 7.5s total so reconnects
+  // land at the correct visual position instead of snapping to 100%.
+  // With fast-forward active: read the bar's current rendered width so the
+  // drain continues smoothly from wherever it is right now.
+  let startPct;
+  if (!currentState?.roundResultsFast) {
+    startPct = Math.min(100, (remainingMs / 7500) * 100);
+  } else {
+    const parentW = bar.parentElement?.clientWidth || 1;
+    startPct = Math.min(100, Math.max(0, (bar.getBoundingClientRect().width / parentW) * 100));
   }
 
-  function tick() {
-    const secs = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
-    if (secs === 0) {
-      clearInterval(resultsCountdownInterval);
-      resultsCountdownInterval = null;
-    }
-  }
+  bar.style.transition = 'none';
+  bar.style.animation = 'none';
+  bar.style.width = `${startPct.toFixed(3)}%`;
 
-  tick();
-  resultsCountdownInterval = setInterval(tick, 200);
+  void bar.offsetWidth; // force reflow before starting transition
+
+  bar.style.transition = `width ${remainingMs}ms linear`;
+  bar.style.width = '0%';
 }
 
 // -- Tip deck (shuffled, one tip per round) ------------------

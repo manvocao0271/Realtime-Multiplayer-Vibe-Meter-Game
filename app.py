@@ -31,8 +31,10 @@ _MIN_EVENT_GAP = {
     'live-pos': 0.02,               # allow high-frequency dial streaming, but bounded
     'suggest-phrase': 0.5,
     'vote-suggested-phrase': 0.08,
+    'create-room': 5.0,             # prevent room-creation flooding (memory DoS)
 }
 _MAX_PENDING_SUGGESTIONS = 30
+_MAX_ROOMS = 500                    # hard cap to bound memory consumption
 
 
 def _new_room_code() -> str:
@@ -547,11 +549,11 @@ def _schedule_advance(code: str) -> None:
     game = rooms.get(code)
     if not game:
         return
-    delay_seconds = 10
+    delay_seconds = 7.5
     game.round_results_duration = delay_seconds
     game.round_results_deadline = int(time.time() * 1000 + delay_seconds * 1000)
     game.round_results_fast = False
-    _start_advance_task(code, game._advance_token, delay_seconds)
+    _start_advance_task(code, game._advance_token, int(delay_seconds))
 
 
 def resolve_and_advance(code: str) -> None:
@@ -609,6 +611,20 @@ def set_security_headers(resp):
     resp.headers.setdefault('X-Frame-Options', 'DENY')
     resp.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
     resp.headers.setdefault('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+    # Content Security Policy: restrict resource origins and block plugin execution.
+    # style-src requires 'unsafe-inline' because rendered screens use element inline styles.
+    resp.headers.setdefault(
+        'Content-Security-Policy',
+        "default-src 'self'; "
+        "script-src 'self'; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "connect-src 'self' ws: wss:; "
+        "img-src 'self' data:; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
+        "frame-ancestors 'none';"
+    )
     return resp
 
 
@@ -640,6 +656,11 @@ def on_connect():
 @socketio.on('create-room')
 def on_create_room():
     """Create and reserve a new unique room code for the requester."""
+    sid = _sid()
+    if not _allow_event(sid, 'create-room'):
+        return emit('err', 'Please wait before creating another room.')
+    if len(rooms) >= _MAX_ROOMS:
+        return emit('err', 'Server is at capacity. Try again later.')
     code = _new_room_code()
     rooms[code] = VibeMeterGame()
     return {'code': code}
@@ -872,8 +893,27 @@ def on_vote_suggested_phrase(data):
     if not suggestion:
         return
 
-    suggestion.setdefault('votes', {})[sid] = vote
-    broadcast(code)
+    votes = suggestion.setdefault('votes', {})
+    # Toggle: casting the same vote again removes it
+    if votes.get(sid) == vote:
+        del votes[sid]
+    else:
+        votes[sid] = vote
+
+    # Push a lightweight targeted event instead of a full state broadcast
+    eligible = set(game.eligible_voter_ids())
+    total_voters = len(eligible)
+    yes_votes = sum(1 for pid, v in votes.items() if pid in eligible and v == 'yes')
+    no_votes  = sum(1 for pid, v in votes.items() if pid in eligible and v == 'no')
+    for receiver_sid, rc in list(sid_to_room.items()):
+        if rc == code:
+            socketio.emit('suggestion-votes', {
+                'suggestionId': suggestion['id'],
+                'yesVotes':     yes_votes,
+                'noVotes':      no_votes,
+                'totalVoters':  total_voters,
+                'myVote':       votes.get(receiver_sid),
+            }, to=receiver_sid)
 
 
 @socketio.on('select-phrase')
@@ -1145,8 +1185,7 @@ PORT = int(os.environ.get('PORT', 3000))
 
 if __name__ == '__main__':
     socketio.start_background_task(_cleanup_rooms)
-    print(f'\n\U0001f3ae  Vibe Meter is running!')
-    print(f'   \u279c  http://localhost:{PORT}')
+    print(f'\n\U0001f3ae  Vibe Meter is running! \u279c  http://localhost:{PORT}\n')
     try:
         socketio.run(app, host='0.0.0.0', port=PORT)
     except KeyboardInterrupt:
