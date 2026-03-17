@@ -19,6 +19,12 @@ function renderResults() {
   const answerDashOffset = (ARC_LEN * (1 - (trueVal - 1) / 99)).toFixed(2);
   const ax = (CX + R * Math.cos(answerAngle)).toFixed(1);
   const ay = (CY - R * Math.sin(answerAngle)).toFixed(1);
+  // Golden fill-line endpoints: radial tick crossing the arc at the true value
+  const innerR = R - 18, outerR = R + 18;
+  const ix = (CX + innerR * Math.cos(answerAngle)).toFixed(1);
+  const iy = (CY - innerR * Math.sin(answerAngle)).toFixed(1);
+  const ox = (CX + outerR * Math.cos(answerAngle)).toFixed(1);
+  const oy = (CY - outerR * Math.sin(answerAngle)).toFixed(1);
 
   const dialTicks = buildDialTicks();
 
@@ -117,10 +123,13 @@ function renderResults() {
       </div>
 
       <div class="card" style="margin-bottom:1rem;">
-        <div class="section-title">Where everyone landed</div>
+        <div class="section-title">The Vibe Story by ${esc(s.vibeManName)}</div>
+        <div class="story-box">${esc(s.story)}</div>
+
+        <div class="section-title" style="margin-top:1.25rem;">Where everyone landed</div>
 
         <div class="dial-wrap" style="margin:0.5rem 0 0;">
-          <svg class="dial-svg" viewBox="0 0 300 170" xmlns="http://www.w3.org/2000/svg">
+          <svg class="dial-svg" style="max-width:75%;" viewBox="0 0 300 200" xmlns="http://www.w3.org/2000/svg">
             <defs>
               <linearGradient id="rdGrad" x1="0%" y1="0%" x2="100%" y2="0%">
                 <stop offset="0%"   stop-color="#10b981"/>
@@ -133,19 +142,15 @@ function renderResults() {
               style="stroke-dasharray:${ARC_LEN.toFixed(2)};stroke-dashoffset:${answerDashOffset};stroke:url(#rdGrad);"/>
             ${dialTicks}
             ${markerAndLabels}
-            <circle cx="${ax}" cy="${ay}" r="13" fill="#fbbf24" stroke="rgba(0,0,0,0.45)" stroke-width="2"
-              style="filter:drop-shadow(0 0 8px #fbbf2488);"/>
-            <text x="${ax}" y="${(parseFloat(ay)+4.5).toFixed(1)}" text-anchor="middle"
-              font-size="9.5" font-weight="900" fill="#000">${trueVal}</text>
+            <line x1="${ix}" y1="${iy}" x2="${ox}" y2="${oy}"
+              stroke="#fbbf24" stroke-width="5" stroke-linecap="round"
+              style="filter:drop-shadow(0 0 10px #fbbf24dd);"/>
             <text x="20" y="190" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
               font-weight="700" font-size="14" fill="#10b981">${esc((phrase?.label1 || '').slice(0,20))}</text>
             <text x="280" y="190" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
               font-weight="700" font-size="14" fill="#ef4444">${esc((phrase?.label2 || '').slice(0,20))}</text>
           </svg>
         </div>
-
-        <div class="section-title" style="margin-top:1.25rem;">The Vibe Story by ${esc(s.vibeManName)}</div>
-        <div class="story-box">${esc(s.story)}</div>
       </div>
 
       <div class="card results-timer-ctrl" style="margin-top:1rem;">

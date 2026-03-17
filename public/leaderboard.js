@@ -85,10 +85,26 @@ function renderPhraseSuggestionsPanel() {
     <div class="sp-panel">
       <div class="sp-title">Next-Round Phrase Suggestions</div>
 
-      <div class="sp-form">
-        <input type="text" id="sp-label1" maxlength="20" placeholder="Left phrase" />
-        <input type="text" id="sp-label2" maxlength="20" placeholder="Right phrase" />
-        <button class="btn btn-secondary btn-full" id="sp-submit-btn">Suggest Pair</button>
+      <div class="sp-popover-wrapper">
+        <button class="btn btn-secondary btn-full sp-trigger" id="sp-popover-trigger">+ Suggest a Pair</button>
+        <div class="sp-popover" id="sp-popover" hidden>
+          <div id="sp-popover-form">
+            <div class="sp-popover-header">Suggest opposite phrases</div>
+            <input type="text" id="sp-label1" maxlength="20" placeholder="Left phrase" autocomplete="off" />
+            <input type="text" id="sp-label2" maxlength="20" placeholder="Right phrase" autocomplete="off" />
+            <div class="sp-popover-footer">
+              <button class="btn btn-secondary sp-popover-submit" id="sp-submit-btn">Suggest</button>
+            </div>
+          </div>
+          <div class="sp-popover-ok" id="sp-popover-ok" hidden>
+            <svg width="28" height="28" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M27.6 16C27.6 22.4 22.4 27.6 16 27.6C9.6 27.6 4.4 22.4 4.4 16C4.4 9.6 9.6 4.4 16 4.4C22.4 4.4 27.6 9.6 27.6 16Z" fill="rgba(32,144,255,0.16)"/>
+              <path d="M12.1 16.97L15 19.87L19.87 13.1M27.6 16C27.6 22.4 22.4 27.6 16 27.6C9.6 27.6 4.4 22.4 4.4 16C4.4 9.6 9.6 4.4 16 4.4C22.4 4.4 27.6 9.6 27.6 16Z" stroke="#2090FF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <div class="sp-popover-ok-title">Suggested!</div>
+            <div class="sp-popover-ok-sub">Your pair has been added.</div>
+          </div>
+        </div>
       </div>
 
       ${suggestions.length === 0 ? '' : `<div class="sp-list">
@@ -96,13 +112,13 @@ function renderPhraseSuggestionsPanel() {
               const yesActive = sg.myVote === 'yes' ? 'active' : '';
               const noActive = sg.myVote === 'no' ? 'active' : '';
               return `
-                <div class="sp-item">
+                <div class="sp-item" data-suggestion-id="${sg.id}">
                   <div class="sp-pair">
                     <span class="sp-label-1">${esc(sg.label1)}</span>
                     <span class="sp-vs">vs</span>
                     <span class="sp-label-2">${esc(sg.label2)}</span>
                   </div>
-                  <div class="sp-meta">by ${esc(sg.byName)} • ✓ ${sg.yesVotes} • ✗ ${sg.noVotes} • voters ${sg.totalVoters}</div>
+                  <div class="sp-meta">by ${esc(sg.byName)} <span class="sp-counts">• ✓ ${sg.yesVotes} • ✗ ${sg.noVotes} • voters ${sg.totalVoters}</span></div>
                   <div class="sp-votes">
                     <button class="btn sp-vote-btn yes ${yesActive}" data-suggestion-id="${sg.id}" data-vote="yes">✓</button>
                     <button class="btn sp-vote-btn no ${noActive}" data-suggestion-id="${sg.id}" data-vote="no">✗</button>
@@ -138,7 +154,7 @@ function patchSidebar() {
   else if (srcSpec && !destSpec) sidebar.querySelector('.lb-list')?.insertAdjacentHTML('afterend', srcSpec.outerHTML);
   else if (!srcSpec && destSpec) destSpec.remove();
 
-  // Swap suggestion votes only — preserve sp-form user inputs
+  // Swap suggestion votes only — the popover wrapper is preserved untouched
   const destPanel = sidebar.querySelector('.sp-panel');
   const srcPanel  = tmp.querySelector('.sp-panel');
   if (destPanel && srcPanel) {
@@ -158,13 +174,60 @@ function patchSidebar() {
   }
 }
 
+let _spListenerCleanup = null;
+
 function attachSidebarListeners() {
   const s = currentState;
   if (!s || s.phase !== 'playing') return;
 
-  const label1 = document.getElementById('sp-label1');
-  const label2 = document.getElementById('sp-label2');
-  const submit = document.getElementById('sp-submit-btn');
+  // Remove any stale doc-level listeners from a previous render
+  if (_spListenerCleanup) { _spListenerCleanup(); _spListenerCleanup = null; }
+
+  const trigger = document.getElementById('sp-popover-trigger');
+  const popover = document.getElementById('sp-popover');
+  const formEl  = document.getElementById('sp-popover-form');
+  const okEl    = document.getElementById('sp-popover-ok');
+  const label1  = document.getElementById('sp-label1');
+  const label2  = document.getElementById('sp-label2');
+  const submit  = document.getElementById('sp-submit-btn');
+
+  function closePopover() {
+    popover?.setAttribute('hidden', '');
+    formEl?.removeAttribute('hidden');
+    okEl?.setAttribute('hidden', '');
+    if (_spListenerCleanup) { _spListenerCleanup(); _spListenerCleanup = null; }
+  }
+
+  trigger?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (popover && !popover.hasAttribute('hidden')) {
+      closePopover();
+      return;
+    }
+    // Position the popover as fixed, aligned to the trigger button
+    const rect = trigger.getBoundingClientRect();
+    popover.style.width = rect.width + 'px';
+    popover.style.left   = rect.left + 'px';
+    popover.style.top    = (rect.bottom + 6) + 'px';
+    popover.style.bottom = '';
+
+    formEl?.removeAttribute('hidden');
+    okEl?.setAttribute('hidden', '');
+    popover.removeAttribute('hidden');
+    label1?.focus();
+
+    const onDocClick = () => closePopover();
+    const onEsc = (ev) => { if (ev.key === 'Escape') closePopover(); };
+    document.addEventListener('click', onDocClick);
+    document.addEventListener('keydown', onEsc);
+    _spListenerCleanup = () => {
+      document.removeEventListener('click', onDocClick);
+      document.removeEventListener('keydown', onEsc);
+    };
+  });
+
+  // Clicks inside the popover must not bubble up to doc and close it
+  popover?.addEventListener('click', (e) => e.stopPropagation());
 
   submit?.addEventListener('click', () => {
     const l1 = (label1?.value || '').trim().slice(0, 20);
@@ -172,8 +235,11 @@ function attachSidebarListeners() {
     if (!l1 || !l2) return showToast('Enter both opposite phrases.', 'error');
     playSound('submit');
     socket.emit('suggest-phrase', { label1: l1, label2: l2 });
-    if (label1) label1.value = '';
-    if (label2) label2.value = '';
+    label1.value = '';
+    label2.value = '';
+    formEl?.setAttribute('hidden', '');
+    okEl?.removeAttribute('hidden');
+    setTimeout(() => closePopover(), 1800);
   });
 
   document.querySelectorAll('.sp-vote-btn').forEach(btn => {

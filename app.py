@@ -893,8 +893,27 @@ def on_vote_suggested_phrase(data):
     if not suggestion:
         return
 
-    suggestion.setdefault('votes', {})[sid] = vote
-    broadcast(code)
+    votes = suggestion.setdefault('votes', {})
+    # Toggle: casting the same vote again removes it
+    if votes.get(sid) == vote:
+        del votes[sid]
+    else:
+        votes[sid] = vote
+
+    # Push a lightweight targeted event instead of a full state broadcast
+    eligible = set(game.eligible_voter_ids())
+    total_voters = len(eligible)
+    yes_votes = sum(1 for pid, v in votes.items() if pid in eligible and v == 'yes')
+    no_votes  = sum(1 for pid, v in votes.items() if pid in eligible and v == 'no')
+    for receiver_sid, rc in list(sid_to_room.items()):
+        if rc == code:
+            socketio.emit('suggestion-votes', {
+                'suggestionId': suggestion['id'],
+                'yesVotes':     yes_votes,
+                'noVotes':      no_votes,
+                'totalVoters':  total_voters,
+                'myVote':       votes.get(receiver_sid),
+            }, to=receiver_sid)
 
 
 @socketio.on('select-phrase')
