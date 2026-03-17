@@ -84,49 +84,6 @@ Cloudflare prints a public `https://` URL. Share the full room URL (e.g. `https:
 
 ---
 
-## Security
-
-This section documents the security findings identified during review and how each was addressed.
-
-### Findings & Mitigations
-
-| # | Finding | Severity | Status |
-|---|---------|----------|--------|
-| 1 | Missing Content-Security-Policy header | Medium | Fixed |
-| 2 | Unbounded room creation (memory DoS) | Medium | Fixed |
-| 3 | XSS via user-controlled strings | High | Pre-existing mitigation |
-| 4 | Path traversal via `/<path>` route | High | Pre-existing mitigation |
-| 5 | Cross-origin WebSocket access | Medium | Pre-existing mitigation |
-| 6 | Event flooding / socket abuse | Low–Medium | Pre-existing mitigation |
-
-#### 1 — Missing Content-Security-Policy (Fixed)
-**Issue:** No `Content-Security-Policy` header was set, so a browser would apply no restrictions on where scripts, styles, and connections could be loaded from — weakening XSS defenses.  
-**Fix:** Added a CSP in `set_security_headers()` restricting scripts to `'self'`, fonts to Google Fonts, WebSocket connections to the serving origin, and blocking all plugin execution (`object-src 'none'`). `style-src` includes `'unsafe-inline'` because the UI uses element-level inline styles extensively. `frame-ancestors 'none'` supersedes the existing `X-Frame-Options: DENY` for modern browsers.
-
-#### 2 — Unbounded Room Creation / Memory DoS (Fixed)
-**Issue:** Any connected socket could fire `create-room` at arbitrary frequency. Because newly created rooms are not tracked in `sid_to_room` (they are only populated when a socket joins via `connect`), the periodic 10-minute cleanup would not catch orphaned rooms created and abandoned this way. A single client could therefore exhaust server memory.  
-**Fix:** Two controls added:
-- `create-room` is added to the per-sid rate-limit table with a **5-second minimum gap**, enforced by the existing `_allow_event()` mechanism.
-- A `_MAX_ROOMS = 500` hard cap rejects new room creation when the server already holds 500 rooms.
-
-#### 3 — XSS via User-Controlled Strings (Pre-existing mitigation)
-**Issue (potential):** Player names, phrase labels, and stories are entered by users and later rendered into the DOM via `innerHTML` template literals.  
-**Mitigation already in place:** All user-supplied strings are passed through `esc()` (`utils.js`) before HTML interpolation. `esc()` replaces `&`, `<`, `>`, `"`, and `'` with their HTML entities. Server-side, inputs are also stripped and length-capped before storage.
-
-#### 4 — Path Traversal via `/<path>` Route (Pre-existing mitigation)
-**Issue (potential):** The catch-all route `/<path:path>` serves static files from `public/`. A crafted path like `../../app.py` could escape the `public/` directory.  
-**Mitigation already in place:** `os.path.realpath()` is used to resolve both the public root and the requested path, and the handler verifies the resolved path starts with `public_root + os.sep` before serving.
-
-#### 5 — Cross-Origin WebSocket Access (Pre-existing mitigation)
-**Issue (potential):** Without CORS restrictions, any website could open a WebSocket to the server and join or control game rooms.  
-**Mitigation already in place:** `flask-socketio` is initialised with `cors_allowed_origins` set to the list in the `CORS_ALLOWED_ORIGINS` environment variable, defaulting to `[]` (same-origin only). To permit remote players through a tunnel, set this variable explicitly.
-
-#### 6 — Event Flooding / Socket Abuse (Pre-existing mitigation)
-**Issue (potential):** High-frequency Socket.IO events (`live-pos`, `suggest-phrase`, `vote-suggested-phrase`) could be used to spam the server or other clients.  
-**Mitigation already in place:** `_allow_event()` enforces a per-socket minimum time gap for those events. The pending phrase suggestion queue is also hard-capped at 30 items.
-
----
-
 ## Architecture
 
 The backend is a **single-process Python monolith** supporting multiple concurrent rooms:
@@ -201,3 +158,46 @@ build_state(sid)          ← personalises snapshot (isVibeman, hasSubmittedGues
         ▼
 emit('state', snapshot)   → browser
 ```
+
+## Security
+
+This section documents the security findings identified during review and how each was addressed.
+
+### Findings & Mitigations
+
+| # | Finding | Severity | Status |
+|---|---------|----------|--------|
+| 1 | Missing Content-Security-Policy header | Medium | Fixed |
+| 2 | Unbounded room creation (memory DoS) | Medium | Fixed |
+| 3 | XSS via user-controlled strings | High | Pre-existing mitigation |
+| 4 | Path traversal via `/<path>` route | High | Pre-existing mitigation |
+| 5 | Cross-origin WebSocket access | Medium | Pre-existing mitigation |
+| 6 | Event flooding / socket abuse | Low–Medium | Pre-existing mitigation |
+
+#### 1 — Missing Content-Security-Policy (Fixed)
+**Issue:** No `Content-Security-Policy` header was set, so a browser would apply no restrictions on where scripts, styles, and connections could be loaded from — weakening XSS defenses.  
+**Fix:** Added a CSP in `set_security_headers()` restricting scripts to `'self'`, fonts to Google Fonts, WebSocket connections to the serving origin, and blocking all plugin execution (`object-src 'none'`). `style-src` includes `'unsafe-inline'` because the UI uses element-level inline styles extensively. `frame-ancestors 'none'` supersedes the existing `X-Frame-Options: DENY` for modern browsers.
+
+#### 2 — Unbounded Room Creation / Memory DoS (Fixed)
+**Issue:** Any connected socket could fire `create-room` at arbitrary frequency. Because newly created rooms are not tracked in `sid_to_room` (they are only populated when a socket joins via `connect`), the periodic 10-minute cleanup would not catch orphaned rooms created and abandoned this way. A single client could therefore exhaust server memory.  
+**Fix:** Two controls added:
+- `create-room` is added to the per-sid rate-limit table with a **5-second minimum gap**, enforced by the existing `_allow_event()` mechanism.
+- A `_MAX_ROOMS = 500` hard cap rejects new room creation when the server already holds 500 rooms.
+
+#### 3 — XSS via User-Controlled Strings (Pre-existing mitigation)
+**Issue (potential):** Player names, phrase labels, and stories are entered by users and later rendered into the DOM via `innerHTML` template literals.  
+**Mitigation already in place:** All user-supplied strings are passed through `esc()` (`utils.js`) before HTML interpolation. `esc()` replaces `&`, `<`, `>`, `"`, and `'` with their HTML entities. Server-side, inputs are also stripped and length-capped before storage.
+
+#### 4 — Path Traversal via `/<path>` Route (Pre-existing mitigation)
+**Issue (potential):** The catch-all route `/<path:path>` serves static files from `public/`. A crafted path like `../../app.py` could escape the `public/` directory.  
+**Mitigation already in place:** `os.path.realpath()` is used to resolve both the public root and the requested path, and the handler verifies the resolved path starts with `public_root + os.sep` before serving.
+
+#### 5 — Cross-Origin WebSocket Access (Pre-existing mitigation)
+**Issue (potential):** Without CORS restrictions, any website could open a WebSocket to the server and join or control game rooms.  
+**Mitigation already in place:** `flask-socketio` is initialised with `cors_allowed_origins` set to the list in the `CORS_ALLOWED_ORIGINS` environment variable, defaulting to `[]` (same-origin only). To permit remote players through a tunnel, set this variable explicitly.
+
+#### 6 — Event Flooding / Socket Abuse (Pre-existing mitigation)
+**Issue (potential):** High-frequency Socket.IO events (`live-pos`, `suggest-phrase`, `vote-suggested-phrase`) could be used to spam the server or other clients.  
+**Mitigation already in place:** `_allow_event()` enforces a per-socket minimum time gap for those events. The pending phrase suggestion queue is also hard-capped at 30 items.
+
+---
