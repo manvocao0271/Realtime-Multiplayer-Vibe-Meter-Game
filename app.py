@@ -436,7 +436,7 @@ class VibeMeterGame:
 
         if results:
             avg_pts = sum(r['pts'] for r in results) / len(results)
-            vm_pts = math.ceil(avg_pts)
+            vm_pts = math.ceil(avg_pts * 2)
             if vm is not None:
                 vm_player = self.players.get(vm)
                 if vm_player:

@@ -84,6 +84,62 @@ Cloudflare prints a public `https://` URL. Share the full room URL (e.g. `https:
 
 ---
 
+## Planned Deployment (Free-First)
+
+This is the deployment plan for launching on `playvibely.com` while keeping costs near zero initially.
+
+### Goals
+
+- Keep startup cost minimal.
+- Avoid opening router ports at home.
+- Keep local bandwidth usage manageable.
+- Add monitoring and automatic recovery.
+
+### Phase 1: Free Baseline (Recommended to Start)
+
+1. Host static frontend files (`public/`) on **Cloudflare Pages** (free tier).
+2. Run backend (`app.py`) on your home PC.
+3. Expose backend through **Cloudflare Tunnel** to `api.playvibely.com`.
+4. Monitor availability with **UptimeRobot** (free tier, 5-minute checks).
+5. Auto-start backend and tunnel at boot with **Windows Task Scheduler**.
+
+This keeps the high-bandwidth static traffic on Cloudflare and sends only real-time game traffic to your home server.
+
+### DNS / Domain Layout
+
+- `playvibely.com` -> Cloudflare Pages (frontend)
+- `www.playvibely.com` -> redirect to `playvibely.com` (optional)
+- `api.playvibely.com` -> Cloudflare Tunnel -> `http://localhost:3000`
+
+### Backend Production Notes
+
+- Run with `FLASK_ENV=production`.
+- Set `CORS_ALLOWED_ORIGINS` to your real domains:
+        - `https://playvibely.com`
+        - `https://www.playvibely.com`
+- Keep service bound to localhost behind tunnel.
+- Add a health endpoint (`GET /health`) returning HTTP 200 JSON.
+
+### Uptime Monitoring
+
+- Create an HTTPS monitor for `https://api.playvibely.com/health`.
+- Enable alert contacts (email/Discord/webhook).
+- Treat this as outage detection, not outage prevention.
+
+### Reliability Reality Check
+
+Home hosting cannot guarantee 100% uptime due to power, ISP, and hardware risks. This plan is a practical low-cost baseline, not true high availability.
+
+### Phase 2: Cheap Reliability Upgrade
+
+When traffic grows or uptime needs improve:
+
+1. Add a low-cost VPS as warm backup backend.
+2. Move shared room/session state to Redis so failover preserves game continuity.
+3. Add automatic failover routing (for example, Cloudflare Load Balancer).
+
+---
+
 ## Architecture
 
 The backend is a **single-process Python monolith** supporting multiple concurrent rooms:
