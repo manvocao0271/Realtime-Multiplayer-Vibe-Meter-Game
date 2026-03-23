@@ -1,83 +1,116 @@
-# 🎛️ Vibe Meter
+# 🎛️ Vibely
+## Architecture Diagrams (Mermaid)
 
-A real-time multiplayer party game where one player writes a "vibe story" — a short description anchored to a secret number on a 1–100 spectrum — and everyone else tries to guess the number by reading the vibe.
+Below are two diagrams in Mermaid syntax: the first shows the current production flow, the second shows an expanded, horizontally scalable option with Redis and a load balancer.
 
----
+1) High-level production flow
 
-## How to Play
+```mermaid
+flowchart LR
+        subgraph CFpages[Cloudflare Pages]
+                UI["playvibely.com\nStatic UI"]
+        end
 
-### Setup
-1. Run the server and visit `http://localhost:3000`.
-2. Choose **Create Lobby** to generate a unique 4-letter room code (e.g. `ABCD`), or enter a friend's code to join.
-3. You can also open a room URL directly (e.g. `http://localhost:3000/ABCD`).
-4. Enter your name to join as a player, or spectate.
-5. Share the room URL with friends — they join by opening the same link.
-6. The **first player to join** becomes the host.
-7. The host picks a **points goal** (25, 50, or 75) and clicks *Start Game*.
-8. Every player enters a pair of **polar-opposite phrases** (e.g. *"morning person"* vs *"night owl"*). These become the scoring scales for the rounds.
+        Players((Players / Browsers))
+        UI -->|static assets| Players
+        Players -->|HTTPS| CFproxy[Cloudflare Proxy/CDN]
+        CFproxy -->|proxied HTTPS| EC2["EC2 Origin\napi.playvibely.com"]
 
-### Gameplay Loop
+        EC2 --> Nginx["nginx (reverse proxy, WS headers)"]
+        Nginx --> Gunicorn["gunicorn (gevent-websocket worker)"]
+        Gunicorn --> Flask["Flask + Flask-SocketIO"]
+        Flask --> GameState["VibeMeterGame\nin-memory state"]
+        EC2 --> Certbot[Certbot / Let's Encrypt]
 
-Rounds rotate until a player reaches the points goal:
+        classDef infra fill:#f8f9fa,stroke:#333,stroke-width:1px;
+        class EC2,Nginx,Gunicorn,Flask,GameState,Certbot infra;
+```
 
-1. **Vibe Man assigned** — players rotate through the role. The Vibe Man receives a random integer 1–100, where 1 is the left phrase and 100 is the right.
-2. **Phrase select** — the Vibe Man picks a phrase pair from the pool. Phrases they've already used are tracked and reset automatically when all are exhausted.
-3. **Write a story** — the Vibe Man writes a short story capturing the feeling of their secret number on the chosen spectrum, without mentioning the number.
-4. **Guessing** — all other players drag an interactive semicircular dial to a number and lock in their guess. The timer (15–30 s, scaled to story length) auto-submits on expiry.
-5. **Scoring** — see table below.
-6. **Results** — every player's guess is overlaid on the spectrum dial. The leaderboard updates with points earned this round.
-7. **Phrase suggestions** — any connected player can suggest a new opposite phrase pair and vote on pending suggestions at any time during `playing`. Votes resolve at the end of each round-results timer.
-8. Play continues, rotating the Vibe Man, until a player hits the goal.
+2) Expanded deployment option (horizontal scale + Redis)
 
-### Scoring
+```mermaid
+flowchart LR
+        subgraph Edge[Cloudflare Edge]
+                CFpages[Cloudflare Pages]
+                CFproxy[Cloudflare Proxy / DNS]
+        end
 
-| Diff from true value | Guesser points |
-|----------------------|----------------|
-| Exact (0)            | **7 pts**      |
-| ≤ 5                  | 3 pts          |
-| ≤ 7                  | 2 pts          |
-| ≤ 9                  | 1 pt           |
-| > 9                  | 0 pts          |
+        Players --> CFpages
+        Players --> CFproxy
+        CFproxy --> LB[Load Balancer / Reverse Proxy]
 
-The **Vibe Man earns the ceiling of the average guessers' score** — good writing benefits everyone.
+        subgraph Cluster[Compute Cluster]
+                EC2A["EC2 #1\nnginx + gunicorn"]
+                EC2B["EC2 #2\nnginx + gunicorn"]
+                EC2C["EC2 #N\nnginx + gunicorn"]
+        end
 
-**🔥 Extreme Zone (guesses 1–5 or 96–100):** Betting on an extreme is all-or-nothing.
-- True value **also in the zone** → **14 pts** for a direct hit, **6 pts** for any other in-zone guess.
-- True value **outside the zone** → **0 pts**, regardless of proximity.
+        LB --> EC2A
+        LB --> EC2B
+        LB --> EC2C
 
-### Phrase Suggestion Voting
+        EC2A --> FlaskA[Flask-SocketIO]
+        EC2B --> FlaskB[Flask-SocketIO]
+        EC2C --> FlaskC[Flask-SocketIO]
 
-- Any connected player can suggest a new opposite phrase pair during the `playing` phase.
-- Any connected player can vote each pending suggestion **✓** (add) or **✗** (reject) at any time.
-- Votes resolve at the **end of each round-results timer**:
-  - ✓ votes ≥ half of connected players → phrase added.
-  - ✗ votes ≥ half of connected players → phrase rejected.
-  - Tie (✓ == ✗) → phrase stays pending; all votes persist into later rounds.
+        subgraph Shared[Shared Services]
+                Redis[(Redis - pub/sub & cache)]
+                S3[(S3 / Shared Storage)]
+        end
 
----
+        FlaskA -->|pub/sub| Redis
+        FlaskB -->|pub/sub| Redis
+        FlaskC -->|pub/sub| Redis
 
-## Running Locally
+        Notes["Notes: nginx proxies WebSocket upgrades; gunicorn uses gevent-websocket; Redis supports cross-instance pub/sub/state; Cloudflare in front uses Full (strict) TLS."]
+```
 
+Notes:
+- These diagrams represent logical components and relationships. For a one-node deployment (the current production), the EC2 instance runs `nginx`, `gunicorn` (gevent), `Flask-SocketIO`, and in-memory game state. For scale-out, add multiple EC2 instances behind a load balancer and use Redis for shared state/pub-sub.
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-python app.py   # → http://localhost:3000
+python app.py        # starts server on http://localhost:3000
 ```
 
-Visit `http://localhost:3000` and choose **Create Lobby** or **Join Lobby**. Share `http://<your-local-ip>:3000` with anyone on the same Wi-Fi.
+If you want remote players during development, you can temporarily use a tunnel (Cloudflare Tunnel or ngrok). Do not use tunnels as a long-term production solution.
 
-### Exposing via Cloudflare Tunnel (for remote players)
+---
 
-Open a second terminal and run:
+## Quick Production Checklist (what we did)
 
-```bash
-cloudflared tunnel --url localhost:3000
-```
+1. Deployed `public/` to Cloudflare Pages and pointed `playvibely.com` / `www.playvibely.com` there.
+2. Launched an Ubuntu EC2 instance and attached an Elastic IP for `api.playvely.com`.
+3. Installed Python, created a virtualenv, installed `requirements.txt`, and installed `gunicorn`, `gevent`, `gevent-websocket`.
+4. Created a `systemd` service to run `gunicorn` and keep the app alive.
+5. Configured `nginx` as a reverse proxy with websocket headers and allowed `80/443` traffic.
+6. Issued a Let's Encrypt certificate with `certbot --nginx -d api.playvibely.com` and enabled HTTPS.
+7. Pointed Cloudflare DNS `api` A record at the EC2 Elastic IP and enabled Cloudflare proxy (orange cloud) with SSL mode `Full (strict)`.
 
-Cloudflare prints a public `https://` URL. Share the full room URL (e.g. `https://<tunnel>.trycloudflare.com/ABCD`) with anyone, anywhere.
+---
 
-| Terminal | Command | Purpose |
-|----------|---------|---------|
-| 1 | `python app.py` | Start the game server on `localhost:3000` |
+## Architecture (brief)
+
+The backend is a single-process in-memory game server that holds per-room `VibeMeterGame` instances keyed by 4-letter codes. Socket.IO events mutate game state and the server broadcasts per-socket personalized snapshots.
+
+Key constraints:
+
+- In-memory state means server restarts will drop active games; consider Redis for shared state if you need failover.
+- No persistent authentication — names are ephemeral and enforced only for duplicates per-room.
+
+---
+
+## Security notes (summary)
+
+- Requests are served with a restrictive Content Security Policy and other headers applied in `app.py` via `@app.after_request`.
+- `CORS_ALLOWED_ORIGINS` is enforced for Socket.IO and should be set to your production hostnames only.
+- Rate-limiting and lightweight per-socket throttling are used to mitigate event flooding.
+
+---
+
+If you want, I can add a short `deploy/` folder with the `nginx` site file, the `systemd` unit, and a `.env.example` to make future redeployments reproducible.
+
 | 2 | `cloudflared tunnel --url localhost:3000` | Expose publicly via Cloudflare Tunnel |
 
 **Stack:** Python · Flask · Flask-SocketIO · gevent (WebSockets)
