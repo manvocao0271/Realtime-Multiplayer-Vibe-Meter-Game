@@ -14,7 +14,6 @@ flowchart LR
         Players((Players / Browsers))
         UI -->|static assets| Players
         Players -->|HTTPS| CFproxy[Cloudflare Proxy/CDN]
-        CFproxy -->|proxied HTTPS| EC2["EC2 Origin\napi.playvibely.com"]
 
         EC2 --> Nginx["nginx (reverse proxy, WS headers)"]
         Nginx --> Gunicorn["gunicorn (gevent-websocket worker)"]
@@ -22,18 +21,11 @@ flowchart LR
         Flask --> GameState["VibeMeterGame\nin-memory state"]
         EC2 --> Certbot[Certbot / Let's Encrypt]
 
-        classDef infra fill:#f8f9fa,stroke:#333,stroke-width:1px;
-        class EC2,Nginx,Gunicorn,Flask,GameState,Certbot infra;
 ```
-
 2) Expanded deployment option (horizontal scale + Redis)
 
 ```mermaid
-flowchart LR
-        subgraph Edge[Cloudflare Edge]
-                CFpages[Cloudflare Pages]
                 CFproxy[Cloudflare Proxy / DNS]
-        end
 
         Players --> CFpages
         Players --> CFproxy
@@ -41,28 +33,17 @@ flowchart LR
 
         subgraph Cluster[Compute Cluster]
                 EC2A["EC2 #1\nnginx + gunicorn"]
-                EC2B["EC2 #2\nnginx + gunicorn"]
                 EC2C["EC2 #N\nnginx + gunicorn"]
         end
 
-        LB --> EC2A
-        LB --> EC2B
-        LB --> EC2C
 
         EC2A --> FlaskA[Flask-SocketIO]
         EC2B --> FlaskB[Flask-SocketIO]
-        EC2C --> FlaskC[Flask-SocketIO]
-
         subgraph Shared[Shared Services]
                 Redis[(Redis - pub/sub & cache)]
-                S3[(S3 / Shared Storage)]
-        end
 
         FlaskA -->|pub/sub| Redis
         FlaskB -->|pub/sub| Redis
-        FlaskC -->|pub/sub| Redis
-
-        Notes["Notes: nginx proxies WebSocket upgrades; gunicorn uses gevent-websocket; Redis supports cross-instance pub/sub/state; Cloudflare in front uses Full (strict) TLS."]
 ```
 
 Notes:
@@ -117,27 +98,6 @@ If you want, I can add a short `deploy/` folder with the `nginx` site file, the 
 
 ---
 
-## Planned Deployment (Free-First)
-
-This is the deployment plan for launching on `playvibely.com` while keeping costs near zero initially.
-
-### Goals
-
-- Keep startup cost minimal.
-- Avoid opening router ports at home.
-- Keep local bandwidth usage manageable.
-- Add monitoring and automatic recovery.
-
-### Phase 1: Free Baseline (Recommended to Start)
-
-1. Host static frontend files (`public/`) on **Cloudflare Pages** (free tier).
-2. Run backend (`app.py`) on your home PC.
-3. Expose backend through **Cloudflare Tunnel** to `api.playvibely.com`.
-4. Monitor availability with **UptimeRobot** (free tier, 5-minute checks).
-5. Auto-start backend and tunnel at boot with **Windows Task Scheduler**.
-
-This keeps the high-bandwidth static traffic on Cloudflare and sends only real-time game traffic to your home server.
-
 ### DNS / Domain Layout
 
 - `playvibely.com` -> Cloudflare Pages (frontend)
@@ -159,49 +119,10 @@ This keeps the high-bandwidth static traffic on Cloudflare and sends only real-t
 - Enable alert contacts (email/Discord/webhook).
 - Treat this as outage detection, not outage prevention.
 
-### Reliability Reality Check
-
-Home hosting cannot guarantee 100% uptime due to power, ISP, and hardware risks. This plan is a practical low-cost baseline, not true high availability.
-
-### Phase 2: Cheap Reliability Upgrade
-
-When traffic grows or uptime needs improve:
-
-1. Add a low-cost VPS as warm backup backend.
-2. Move shared room/session state to Redis so failover preserves game continuity.
-3. Add automatic failover routing (for example, Cloudflare Load Balancer).
-
----
-
-## Architecture
-
-The backend is a **single-process Python monolith** supporting multiple concurrent rooms:
-
-```
-Browser (Socket.IO client)
-        |
-        │  WebSocket  (connects with ?room=CODE)
-        ▼
-  Python / Flask + Flask-SocketIO (gevent)
-  ┌──────────────────────────────────────────────────┐
-  │  rooms: dict[str, VibeMeterGame]                 │
-  │    ABCD → VibeMeterGame  (phases & scoring)      │
-  │    XYZW → VibeMeterGame                          │
-  │    …                                             │
-  │  Socket event handlers                           │
-  └──────────────────────────────────────────────────┘
-```
-
-Game state lives in per-room `VibeMeterGame` instances stored in a `rooms` dict keyed by 4-character room codes. Every Socket.IO event mutates the relevant instance and calls `broadcast(code)`, which rebuilds a personalised state snapshot for each connected socket and pushes it simultaneously.
-
-This is intentionally minimal — no database, no authentication, no persistence between sessions.
-
 ### Class Hierarchy
 
 ```
 Player  (base — name, sid, score, is_host)
-├── ActivePlayer    — has vibe-man rotation slot, guess state, phrase history
-└── SpectatorPlayer — observer; submits a phrase to the pending queue;
                       promoted to ActivePlayer at the start of the next round
 ```
 
@@ -219,7 +140,6 @@ lobby ──► phrase-input ──► playing ──► game-over
 
 ### Multi-Room Layout
 
-```
 rooms: dict[str, VibeMeterGame]
   ABCD → VibeMeterGame   (players, phase, round state …)
   XYZW → VibeMeterGame
