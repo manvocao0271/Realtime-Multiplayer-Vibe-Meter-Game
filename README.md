@@ -14,6 +14,7 @@ flowchart LR
         Players((Players / Browsers))
         UI -->|static assets| Players
         Players -->|HTTPS| CFproxy[Cloudflare Proxy/CDN]
+        CFproxy -->|proxied HTTPS| EC2["EC2 Origin\napi.playvibely.com"]
 
         EC2 --> Nginx["nginx (reverse proxy, WS headers)"]
         Nginx --> Gunicorn["gunicorn (gevent-websocket worker)"]
@@ -21,11 +22,18 @@ flowchart LR
         Flask --> GameState["VibeMeterGame\nin-memory state"]
         EC2 --> Certbot[Certbot / Let's Encrypt]
 
+        classDef infra fill:#f8f9fa,stroke:#333,stroke-width:1px;
+        class EC2,Nginx,Gunicorn,Flask,GameState,Certbot infra;
 ```
+
 2) Expanded deployment option (horizontal scale + Redis)
 
 ```mermaid
+flowchart LR
+        subgraph Edge[Cloudflare Edge]
+                CFpages[Cloudflare Pages]
                 CFproxy[Cloudflare Proxy / DNS]
+        end
 
         Players --> CFpages
         Players --> CFproxy
@@ -33,17 +41,28 @@ flowchart LR
 
         subgraph Cluster[Compute Cluster]
                 EC2A["EC2 #1\nnginx + gunicorn"]
+                EC2B["EC2 #2\nnginx + gunicorn"]
                 EC2C["EC2 #N\nnginx + gunicorn"]
         end
 
+        LB --> EC2A
+        LB --> EC2B
+        LB --> EC2C
 
         EC2A --> FlaskA[Flask-SocketIO]
         EC2B --> FlaskB[Flask-SocketIO]
+        EC2C --> FlaskC[Flask-SocketIO]
+
         subgraph Shared[Shared Services]
                 Redis[(Redis - pub/sub & cache)]
+                S3[(S3 / Shared Storage)]
+        end
 
         FlaskA -->|pub/sub| Redis
         FlaskB -->|pub/sub| Redis
+        FlaskC -->|pub/sub| Redis
+
+        Notes["Notes: nginx proxies WebSocket upgrades; gunicorn uses gevent-websocket; Redis supports cross-instance pub/sub/state; Cloudflare in front uses Full (strict) TLS."]
 ```
 
 Notes:
@@ -71,7 +90,7 @@ If you want remote players during development, you can temporarily use a tunnel 
 
 ---
 
-## Architecture (brief)
+## Architecture
 
 The backend is a single-process in-memory game server that holds per-room `VibeMeterGame` instances keyed by 4-letter codes. Socket.IO events mutate game state and the server broadcasts per-socket personalized snapshots.
 
@@ -82,7 +101,7 @@ Key constraints:
 
 ---
 
-## Security notes (summary)
+## Security notes
 
 - Requests are served with a restrictive Content Security Policy and other headers applied in `app.py` via `@app.after_request`.
 - `CORS_ALLOWED_ORIGINS` is enforced for Socket.IO and should be set to your production hostnames only.
@@ -123,6 +142,8 @@ If you want, I can add a short `deploy/` folder with the `nginx` site file, the 
 
 ```
 Player  (base — name, sid, score, is_host)
+├── ActivePlayer    — has vibe-man rotation slot, guess state, phrase history
+└── SpectatorPlayer — observer; submits a phrase to the pending queue;
                       promoted to ActivePlayer at the start of the next round
 ```
 
@@ -140,6 +161,7 @@ lobby ──► phrase-input ──► playing ──► game-over
 
 ### Multi-Room Layout
 
+```
 rooms: dict[str, VibeMeterGame]
   ABCD → VibeMeterGame   (players, phase, round state …)
   XYZW → VibeMeterGame
