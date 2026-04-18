@@ -1,7 +1,7 @@
 # 🎛️ Vibely
-## Architecture Diagrams (Mermaid)
 # https://playvibely.com/
 
+## Architecture Diagrams (Mermaid)
 Below are two diagrams in Mermaid syntax: the first shows the current production flow, the second shows an expanded, horizontally scalable option with Redis and a load balancer.
 
 1) High-level production flow
